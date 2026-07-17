@@ -15,16 +15,8 @@
 // sweep rather than a single simulated frame.
 
 (function () {
-  // Sensor width/height are user-adjustable (see the W x H inputs in Box 1's
-  // header) so they live on `params` alongside the other simulation
-  // parameters, rather than as fixed constants - `params.sensorWidth` and
-  // `params.sensorHeight` are the single source of truth for sensor size.
-  const SENSOR_WIDTH_MIN = 1024;
-  const SENSOR_WIDTH_MAX = 5000;
-  const SENSOR_HEIGHT_MIN = 100;
-  const SENSOR_HEIGHT_MAX = 5000;
-  const DEFAULT_SENSOR_WIDTH = 1024;
-  const DEFAULT_SENSOR_HEIGHT = 1024;
+  const SENSOR_ROWS = 1024;
+  const SENSOR_COLS = 1024;
   const LIVE_FRAME_INTERVAL_MS = 200; // ~5 fps; matches the notebook's animation interval
   const LINE_PROFILE_ROW_COLOR = "#00838f"; // must match LINE_PROFILE_COLOR in charts.js
 
@@ -56,9 +48,6 @@
   };
 
   const params = {
-    // Sensor form factor
-    sensorWidth: DEFAULT_SENSOR_WIDTH,
-    sensorHeight: DEFAULT_SENSOR_HEIGHT,
     // Experimental
     photons: DEFAULT_PARAMS.photons,
     exposureTime: DEFAULT_PARAMS.exposureTime,
@@ -155,12 +144,6 @@
       const control = controlsByKey[key];
       if (control) control.setValue(DEFAULT_PARAMS[key]);
     }
-    // Sensor width/height live in Box 1's header rather than among the
-    // slider-backed controls above, so they're reset here explicitly.
-    params.sensorWidth = DEFAULT_SENSOR_WIDTH;
-    params.sensorHeight = DEFAULT_SENSOR_HEIGHT;
-    sensorWidthInput.value = DEFAULT_SENSOR_WIDTH;
-    sensorHeightInput.value = DEFAULT_SENSOR_HEIGHT;
     refreshDisplayRanges();
     drawLiveFrame();
     updateStaticPanels();
@@ -169,6 +152,7 @@
   // --- Panels 1-3: live sensor image, histogram, line profile ------------
 
   const sensorCanvas = document.getElementById("sensor-canvas");
+  const middleRow = Math.floor(SENSOR_ROWS / 2);
 
   Charts.initHistogramChart("histogram-chart");
   Charts.initLineProfileChart("line-profile-chart");
@@ -180,7 +164,7 @@
   // NOT on every live frame - so the axes/color scale stay put while Play is
   // running and only move when you actually change a parameter.
   let cachedRange = { vmin: 0, vmax: Math.pow(2, params.bitDepth) - 1 };
-  let cachedHistYMax = params.sensorWidth * params.sensorHeight;
+  let cachedHistYMax = 1024 * 1024;
 
   // Last-drawn frame data, kept around so the Export button can save exactly
   // what's on screen without re-simulating (and without being affected by a
@@ -189,7 +173,7 @@
 
   function refreshDisplayRanges() {
     const photonMap = Physics.makeCircularIllumination(
-      params.sensorHeight, params.sensorWidth, params.photons, params.spotRadius
+      SENSOR_ROWS, SENSOR_COLS, params.photons, params.spotRadius
     );
     const { adu } = Physics.simulateSensor(photonMap, cameraParamsForPhysics());
     const maxAdu = Math.pow(2, params.bitDepth) - 1;
@@ -209,28 +193,27 @@
   }
 
   function drawLiveFrame() {
-    const middleRow = Math.floor(params.sensorHeight / 2);
     const photonMap = Physics.makeCircularIllumination(
-      params.sensorHeight, params.sensorWidth, params.photons, params.spotRadius
+      SENSOR_ROWS, SENSOR_COLS, params.photons, params.spotRadius
     );
     const { adu } = Physics.simulateSensor(photonMap, cameraParamsForPhysics());
     const { vmin, vmax } = cachedRange;
 
-    CanvasR.renderSensorFrame(sensorCanvas, adu, params.sensorHeight, params.sensorWidth, lut, vmin, vmax);
+    CanvasR.renderSensorFrame(sensorCanvas, adu, SENSOR_ROWS, SENSOR_COLS, lut, vmin, vmax);
     CanvasR.drawRowIndicatorLine(sensorCanvas, middleRow, LINE_PROFILE_ROW_COLOR);
 
     const { centers, counts } = Charts.updateHistogramChart("histogram-chart", {
       adu, bins: 80, vmin, vmax, yMax: cachedHistYMax,
     });
 
-    const rowData = adu.subarray(middleRow * params.sensorWidth, (middleRow + 1) * params.sensorWidth);
+    const rowData = adu.subarray(middleRow * SENSOR_COLS, (middleRow + 1) * SENSOR_COLS);
 
     // The illuminated ("signal") portion of this row: since illumination is a
     // disc centered on the sensor and the middle row passes through that
     // center, the lit segment spans [centerCol - radius, centerCol + radius].
-    const centerCol = Math.floor(params.sensorWidth / 2);
+    const centerCol = Math.floor(SENSOR_COLS / 2);
     const colStart = Math.max(0, Math.round(centerCol - params.spotRadius));
-    const colEnd = Math.min(params.sensorWidth - 1, Math.round(centerCol + params.spotRadius));
+    const colEnd = Math.min(SENSOR_COLS - 1, Math.round(centerCol + params.spotRadius));
     let signalMean;
     if (colEnd > colStart) {
       let sum = 0;
@@ -291,33 +274,6 @@
       noiseTotal: Array.from(stats.noise_total),
     };
   }
-
-  // --- Sensor dimensions (Box 1 header) -----------------------------------
-  // Plain clamped number inputs rather than the slider controls used in Box
-  // 6 - this is a form-factor choice made rarely, not something you'd drag a
-  // slider to explore, and it lives in the header next to Export/Play rather
-  // than among the other simulation parameters.
-
-  const sensorWidthInput = document.getElementById("sensor-width-input");
-  const sensorHeightInput = document.getElementById("sensor-height-input");
-
-  function clampSensorDim(rawValue, min, max, fallback) {
-    const n = Math.round(Number(rawValue));
-    if (!Number.isFinite(n)) return fallback;
-    return Math.min(Math.max(n, min), max);
-  }
-
-  function onSensorDimsChange() {
-    params.sensorWidth = clampSensorDim(sensorWidthInput.value, SENSOR_WIDTH_MIN, SENSOR_WIDTH_MAX, params.sensorWidth);
-    params.sensorHeight = clampSensorDim(sensorHeightInput.value, SENSOR_HEIGHT_MIN, SENSOR_HEIGHT_MAX, params.sensorHeight);
-    sensorWidthInput.value = params.sensorWidth;
-    sensorHeightInput.value = params.sensorHeight;
-    refreshDisplayRanges();
-    drawLiveFrame();
-  }
-
-  sensorWidthInput.addEventListener("change", onSensorDimsChange);
-  sensorHeightInput.addEventListener("change", onSensorDimsChange);
 
   // --- Play / Pause loop for panels 1-3 ------------------------------------
 

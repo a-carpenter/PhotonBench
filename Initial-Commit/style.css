@@ -93,35 +93,6 @@ html, body {
   gap: 8px;
 }
 
-.sensor-dims {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-right: 4px;
-  padding-right: 10px;
-  border-right: 1px solid #d8dce3;
-}
-
-.sensor-dims label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #3a4150;
-}
-
-.dims-x {
-  font-size: 11px;
-  color: #8a919e;
-}
-
-.dim-input {
-  width: 60px;
-  padding: 3px 5px;
-  font-family: "SF Mono", "Consolas", "Menlo", monospace;
-  font-size: 11px;
-  border: 1px solid #aeb4bf;
-  border-radius: 0;
-}
-
 .panel-body {
   flex: 1;
   min-height: 0;
