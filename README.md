@@ -4,6 +4,9 @@ This tool simulates the photoresponse of a digital image sensor, pixel by
 pixel, so you can see how camera parameters and noise sources shape the
 final image.
 
+**View the live site → https://a-carpenter.github.io/PhotonBench**
+
+
 ## What's being simulated
 
 Each pixel's signal is built up from three independent noise sources, added
