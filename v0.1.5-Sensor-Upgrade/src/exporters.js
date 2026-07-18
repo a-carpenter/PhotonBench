@@ -100,24 +100,18 @@ function exportLineProfile({ params, frame, stamp = timestamp() }) {
 }
 
 /**
- * Panel 4 (SNR curve): PNG + CSV of incident photons vs. SNR, plus a third
- * column for the same curve normalized to a 13 µm reference pixel
- * (SNR * pixelSize^2 / 13^2 - the same ratio used by the Camera Sensitivity
- * Comparison panel's "Compare" button), all in one file.
+ * Panel 4 (SNR curve): PNG + CSV of incident photons vs. SNR.
  * @param {object} args
- * @param {object} args.params  current parameter values (for metadata; also
- *   supplies pixelSize for the normalized column)
+ * @param {object} args.params  current parameter values (for metadata)
  * @param {object} args.staticData  { photonRange, snr }
  * @param {string} [args.stamp] shared timestamp, if called as part of exportAll
  */
 function exportSNR({ params, staticData, stamp = timestamp() }) {
   const header = buildMetadataHeader(params);
   downloadPlotlyPNG("snr-chart", `snr-curve_${stamp}.png`);
-  const ratio = (params.pixelSize * params.pixelSize) / (13 * 13);
-  const normalizedSnr = staticData.snr.map((v) => v * ratio);
   const csv = header + arraysToCSV(
-    ["IncidentPhotons", "SNR", "NormalizedSNR_13umPixel"],
-    [staticData.photonRange, staticData.snr, normalizedSnr]
+    ["IncidentPhotons", "SNR"],
+    [staticData.photonRange, staticData.snr]
   );
   downloadTextFile(`snr-curve_${stamp}.txt`, csv);
 }

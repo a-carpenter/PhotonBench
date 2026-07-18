@@ -15,12 +15,6 @@ const { window } = dom;
 // --- Stub fetch to always fail, forcing the Info fallback path (simulates file://) ---
 window.fetch = () => Promise.reject(new Error("fetch disabled in test"));
 
-// --- Stub window.prompt (jsdom doesn't implement it) for the Compare button ---
-window.prompt = () => null;
-
-// --- Stub window.alert (jsdom doesn't implement it) for the trace-cap warning ---
-window.alert = () => {};
-
 // --- Stub Plotly ---
 const plotlyCalls = [];
 const downloadImageCalls = [];
@@ -178,18 +172,17 @@ check(
 );
 
 // ============================================================================
-// 3. Info overlay (header button), replacing the old inline info text
+// 3. Inline info text (under Box 1, no button/overlay anymore)
 // ============================================================================
 // Info.loadInfoText() is awaited at load time in main.js; flush microtasks.
 (async () => {
   await new Promise((r) => setTimeout(r, 20));
-  const infoModalContentEl = window.document.getElementById("info-modal-content");
-  const infoOverlayEl = window.document.getElementById("info-overlay");
-  check("Info overlay exists in the DOM and starts hidden", !!infoOverlayEl && infoOverlayEl.hidden === true);
+  const infoTextEl = window.document.getElementById("info-text");
+  check("Info panel exists and has no button/overlay wrapper", !!infoTextEl && !window.document.getElementById("info-overlay"));
   check(
-    "Info overlay content populates automatically with fallback text (since fetch is stubbed to fail)",
-    infoModalContentEl.textContent.includes("PhotonBench"),
-    infoModalContentEl.textContent.slice(0, 60)
+    "Info text populates automatically with fallback text (since fetch is stubbed to fail)",
+    infoTextEl.textContent.includes("PhotonBench"),
+    infoTextEl.textContent.slice(0, 60)
   );
 
   // ============================================================================

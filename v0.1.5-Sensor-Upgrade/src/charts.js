@@ -191,19 +191,15 @@ function updateSNRChart(divId, { photonRange, snr, currentPhotons, currentSNR })
       {
         x: photonRange, y: snr, type: "scatter", mode: "lines",
         line: { color: "#185FA5", width: 2 },
-        // Match the Comparison panel's hover precision (one decimal place)
-        // rather than the default full floating-point display.
-        hovertemplate: "%{x:.1f}, %{y:.1f}<extra></extra>",
       },
       {
         x: [currentPhotons], y: [currentSNR], type: "scatter", mode: "markers",
         marker: { color: "#e63946", size: 10, line: { color: "#7a1620", width: 1 } },
-        hovertemplate: "%{x:.1f}, %{y:.1f}<extra></extra>",
       },
     ],
     mergeLayout({
       title: { text: "Signal-to-Noise", font: { size: 13 } },
-      xaxis: boxedAxis({ title: "Incident Photons / Pixel", type: "log", range: xRange }),
+      xaxis: boxedAxis({ title: "Incident photons", type: "log", range: xRange }),
       yaxis: boxedAxis({ title: "Signal-to-Noise", type: "log" }),
     }),
     PLOTLY_CONFIG
@@ -288,51 +284,6 @@ function updateNoiseChart(divId, { photonRange, noiseShot, noiseDark, noiseRead,
   );
 }
 
-// ---------------------------------------------------------------------------
-// Camera Sensitivity Comparison panel: two side-by-side log-log SNR plots
-// (raw and pixel-size-normalized), each holding zero or more named,
-// user-saved traces. Unlike the live Panel 4 SNR chart, these show only the
-// bare curve - no +/-1 SNR shaded band, no current-operating-point marker -
-// since the goal here is comparing shapes/positions of multiple saved
-// curves, not reading off one camera's live noise margin.
-// ---------------------------------------------------------------------------
-
-function initComparisonChart(divId, { title, xAxisTitle }) {
-  Plotly.newPlot(
-    divId, [],
-    mergeLayout({
-      title: { text: title, font: { size: 13 } },
-      xaxis: boxedAxis({ title: xAxisTitle, type: "log" }),
-      yaxis: boxedAxis({ title: "Signal-to-Noise", type: "log" }),
-    }),
-    PLOTLY_CONFIG
-  );
-}
-
-function updateComparisonChart(divId, { title, xAxisTitle, traces }) {
-  const plotlyTraces = traces.map((t) => ({
-    x: t.x, y: t.y, type: "scatter", mode: "lines",
-    name: t.name, line: { color: t.color, width: 2 },
-    // A custom hovertemplate rather than the default hoverinfo formatting -
-    // this both guarantees the trace name shows up (so you can tell which
-    // saved camera a curve belongs to) and rounds x/y to one decimal place
-    // (the default would print full floating-point precision).
-    hovertemplate: "%{x:.1f}, %{y:.1f}<br>%{fullData.name}<extra></extra>",
-  }));
-
-  Plotly.react(
-    divId,
-    plotlyTraces,
-    mergeLayout({
-      title: { text: title, font: { size: 13 } },
-      xaxis: boxedAxis({ title: xAxisTitle, type: "log" }),
-      yaxis: boxedAxis({ title: "Signal-to-Noise", type: "log" }),
-      hovermode: "closest",
-    }),
-    PLOTLY_CONFIG
-  );
-}
-
 window.CameraCharts = {
   initHistogramChart,
   updateHistogramChart,
@@ -342,6 +293,4 @@ window.CameraCharts = {
   updateSNRChart,
   initNoiseChart,
   updateNoiseChart,
-  initComparisonChart,
-  updateComparisonChart,
 };

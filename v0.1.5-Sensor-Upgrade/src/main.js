@@ -21,7 +21,7 @@
   // `params.sensorHeight` are the single source of truth for sensor size.
   const SENSOR_WIDTH_MIN = 1024;
   const SENSOR_WIDTH_MAX = 5000;
-  const SENSOR_HEIGHT_MIN = 1; // 1 = a line-scan sensor (a single row)
+  const SENSOR_HEIGHT_MIN = 100;
   const SENSOR_HEIGHT_MAX = 5000;
   const DEFAULT_SENSOR_WIDTH = 1024;
   const DEFAULT_SENSOR_HEIGHT = 1024;
@@ -53,7 +53,6 @@
     fullWell: 30000,
     offset: 100.0,
     gain: 1.0,
-    pixelSize: 13.0,
   };
 
   const params = {
@@ -71,7 +70,6 @@
     fullWell: DEFAULT_PARAMS.fullWell,
     offset: DEFAULT_PARAMS.offset,
     gain: DEFAULT_PARAMS.gain,
-    pixelSize: DEFAULT_PARAMS.pixelSize,
     bitDepth: 12,
   };
 
@@ -106,7 +104,6 @@
     { key: "fullWell", id: "full-well", label: "Full Well Depth", unit: "e-", min: 1000, max: 200000000, scale: "log", value: params.fullWell },
     { key: "offset", id: "offset", label: "Offset", unit: "e-", min: 0, max: 2000, scale: "linear", value: params.offset },
     { key: "gain", id: "gain", label: "Sensitivity", unit: "e-/ADU", min: 0.1, max: 50, scale: "log", value: params.gain },
-    { key: "pixelSize", id: "pixel-size", label: "Pixel Size", unit: "µm", min: 1, max: 30, scale: "linear", step: 0.01, value: params.pixelSize },
   ];
 
   const experimentalContainer = document.getElementById("experimental-controls");
@@ -247,12 +244,6 @@
   }
 
   // --- Panels 4-5: static SNR curve + noise contributions -----------------
-  // Note: pixel size does NOT factor into this panel's SNR curve - it's a
-  // single-camera view. Pixel-area normalization (pixelSize^2 / 13^2, for
-  // comparing sensitivity across cameras with different pixel sizes under
-  // the same illumination) will instead be applied later, at the point
-  // where a curve is stored via the "Compare" button for the future Camera
-  // Sensitivity Comparison feature - not on every live update here.
 
   let lastStaticData = { photonRange: [], snr: [], noiseShot: [], noiseDark: [], noiseRead: [], noiseTotal: [] };
 
@@ -300,149 +291,6 @@
       noiseTotal: Array.from(stats.noise_total),
     };
   }
-
-  // --- Camera Sensitivity Comparison panel --------------------------------
-  // "Compare" (SNR panel header) snapshots the SNR panel's current curve
-  // into this panel under a user-given name: as-is on the left plot, and
-  // pixel-size-normalized (multiplied by pixelSize^2 / 13^2, same ratio as
-  // the earlier per-camera toggle) on the right plot, so cameras with
-  // different pixel sizes can be compared under equivalent illumination.
-  // Both plots show only the bare SNR curve (no +/-1 noise band, no
-  // current-point marker) since the point here is comparing shapes across
-  // multiple saved cameras, not reading one camera's live noise margin.
-
-  const COMPARISON_REFERENCE_PIXEL_SIZE_UM = 13;
-  const COMPARISON_MAX_TRACES = 5; // cap to avoid cluttering the plots/legend
-  const COMPARISON_PALETTE = [
-    "#185FA5", "#e63946", "#0F6E56", "#c98a1f",
-    "#7F77DD", "#8a3ea8", "#c04f8a", "#3aa6a0",
-  ];
-
-  const COMPARISON_PLOT_1_TITLE = "Signal-to-Noise";
-  const COMPARISON_PLOT_1_X_TITLE = "Photons / Pixel";
-  const COMPARISON_PLOT_2_TITLE = "Normalized SNR";
-  const COMPARISON_PLOT_2_X_TITLE = "Photons / 13 µm Pixel";
-
-  const compareBtn = document.getElementById("compare-btn");
-  const comparisonLegendEl = document.getElementById("comparison-legend");
-  const comparisonLegendWrap = document.getElementById("comparison-legend-wrap");
-  const comparisonLegendToggle = document.getElementById("comparison-legend-toggle");
-
-  let comparisonTraces = [];
-  let comparisonIdCounter = 0;
-
-  Charts.initComparisonChart("comparison-plot-1", { title: COMPARISON_PLOT_1_TITLE, xAxisTitle: COMPARISON_PLOT_1_X_TITLE });
-  Charts.initComparisonChart("comparison-plot-2", { title: COMPARISON_PLOT_2_TITLE, xAxisTitle: COMPARISON_PLOT_2_X_TITLE });
-
-  function renderComparisonCharts() {
-    Charts.updateComparisonChart("comparison-plot-1", {
-      title: COMPARISON_PLOT_1_TITLE,
-      xAxisTitle: COMPARISON_PLOT_1_X_TITLE,
-      traces: comparisonTraces.map((t) => ({ name: t.name, color: t.color, x: t.photonRange, y: t.snr })),
-    });
-    Charts.updateComparisonChart("comparison-plot-2", {
-      title: COMPARISON_PLOT_2_TITLE,
-      xAxisTitle: COMPARISON_PLOT_2_X_TITLE,
-      traces: comparisonTraces.map((t) => ({ name: t.name, color: t.color, x: t.photonRange, y: t.snrNormalized })),
-    });
-    renderComparisonLegend();
-  }
-
-  // --- Trace legend collapse/expand ---------------------------------------
-  // Hides just the trace list (a thin toggle strip stays clickable at the
-  // same spot), letting both plots grow to fill the reclaimed width.
-  let comparisonLegendCollapsed = false;
-
-  function setComparisonLegendCollapsed(collapsed) {
-    comparisonLegendCollapsed = collapsed;
-    comparisonLegendWrap.classList.toggle("is-collapsed", collapsed);
-    comparisonLegendToggle.textContent = collapsed ? "«" : "»"; // « to expand, » to collapse
-    const label = collapsed ? "Show trace legend" : "Hide trace legend";
-    comparisonLegendToggle.setAttribute("aria-label", label);
-    comparisonLegendToggle.title = label;
-    resizeComparisonPlots();
-  }
-
-  function resizeComparisonPlots() {
-    // Plotly's responsive:true config only reacts to window resize events,
-    // not container size changes from a CSS/layout change like this one, so
-    // the plots need an explicit nudge to redraw at their new width.
-    if (window.Plotly && window.Plotly.Plots && typeof window.Plotly.Plots.resize === "function") {
-      window.Plotly.Plots.resize(document.getElementById("comparison-plot-1"));
-      window.Plotly.Plots.resize(document.getElementById("comparison-plot-2"));
-    }
-  }
-
-  comparisonLegendToggle.addEventListener("click", () => setComparisonLegendCollapsed(!comparisonLegendCollapsed));
-
-  function renderComparisonLegend() {
-    comparisonLegendEl.innerHTML = "";
-
-    if (comparisonTraces.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "comparison-legend-empty";
-      empty.textContent = "No saved traces yet. Click Compare in the SNR panel above to add one.";
-      comparisonLegendEl.appendChild(empty);
-      return;
-    }
-
-    for (const t of comparisonTraces) {
-      const item = document.createElement("div");
-      item.className = "comparison-legend-item";
-
-      const swatch = document.createElement("span");
-      swatch.className = "comparison-legend-swatch";
-      swatch.style.backgroundColor = t.color;
-
-      const name = document.createElement("span");
-      name.className = "comparison-legend-name";
-      name.textContent = t.name;
-      name.title = t.name;
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.className = "comparison-legend-delete";
-      deleteBtn.textContent = "×";
-      deleteBtn.setAttribute("aria-label", `Remove ${t.name}`);
-      deleteBtn.addEventListener("click", () => {
-        comparisonTraces = comparisonTraces.filter((tr) => tr.id !== t.id);
-        renderComparisonCharts();
-      });
-
-      item.appendChild(swatch);
-      item.appendChild(name);
-      item.appendChild(deleteBtn);
-      comparisonLegendEl.appendChild(item);
-    }
-  }
-
-  compareBtn.addEventListener("click", () => {
-    if (comparisonTraces.length >= COMPARISON_MAX_TRACES) {
-      window.alert(`You can compare up to ${COMPARISON_MAX_TRACES} cameras at a time. Delete one from the legend before adding another.`);
-      return;
-    }
-
-    const rawName = window.prompt("Name this trace for the Camera Sensitivity Comparison panel:");
-    if (!rawName) return; // cancelled, dismissed, or left blank
-    const name = rawName.trim();
-    if (!name) return; // whitespace-only name - don't save an unlabeled trace
-
-    const ratio = (params.pixelSize * params.pixelSize) / (COMPARISON_REFERENCE_PIXEL_SIZE_UM * COMPARISON_REFERENCE_PIXEL_SIZE_UM);
-    const color = COMPARISON_PALETTE[comparisonIdCounter % COMPARISON_PALETTE.length];
-
-    comparisonTraces.push({
-      id: comparisonIdCounter++,
-      name,
-      color,
-      photonRange: lastStaticData.photonRange.slice(),
-      snr: lastStaticData.snr.slice(),
-      snrNormalized: lastStaticData.snr.map((v) => v * ratio),
-    });
-
-    renderComparisonCharts();
-  });
-
-  renderComparisonCharts();
 
   // --- Sensor dimensions (Box 1 header) -----------------------------------
   // Plain clamped number inputs rather than the slider controls used in Box
@@ -493,61 +341,11 @@
 
   playPauseBtn.addEventListener("click", () => setPlaying(!isPlaying));
 
-  // --- Info overlay (header button) ---------------------------------------
+  // --- Info text (inline, under Box 1) ---------------------------------------
 
-  const infoBtn = document.getElementById("info-btn");
-  const infoOverlay = document.getElementById("info-overlay");
-  const infoModalContent = document.getElementById("info-modal-content");
-  const infoCloseBtn = document.getElementById("info-close-btn");
-
+  const infoText = document.getElementById("info-text");
   Info.loadInfoText().then((html) => {
-    infoModalContent.innerHTML = html;
-  });
-
-  function openInfoOverlay() {
-    infoOverlay.hidden = false;
-  }
-
-  function closeInfoOverlay() {
-    infoOverlay.hidden = true;
-  }
-
-  infoBtn.addEventListener("click", openInfoOverlay);
-  infoCloseBtn.addEventListener("click", closeInfoOverlay);
-
-  // Clicking the dimmed backdrop (not the modal box itself) closes it too.
-  infoOverlay.addEventListener("click", (e) => {
-    if (e.target === infoOverlay) closeInfoOverlay();
-  });
-
-  // Escape closes the overlay whenever it's open.
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !infoOverlay.hidden) closeInfoOverlay();
-  });
-
-  // --- Comparison panel Info overlay (explains the Normalized SNR plot) ---
-
-  const comparisonInfoBtn = document.getElementById("comparison-info-btn");
-  const comparisonInfoOverlay = document.getElementById("comparison-info-overlay");
-  const comparisonInfoCloseBtn = document.getElementById("comparison-info-close-btn");
-
-  function openComparisonInfoOverlay() {
-    comparisonInfoOverlay.hidden = false;
-  }
-
-  function closeComparisonInfoOverlay() {
-    comparisonInfoOverlay.hidden = true;
-  }
-
-  comparisonInfoBtn.addEventListener("click", openComparisonInfoOverlay);
-  comparisonInfoCloseBtn.addEventListener("click", closeComparisonInfoOverlay);
-
-  comparisonInfoOverlay.addEventListener("click", (e) => {
-    if (e.target === comparisonInfoOverlay) closeComparisonInfoOverlay();
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !comparisonInfoOverlay.hidden) closeComparisonInfoOverlay();
+    infoText.innerHTML = html;
   });
 
   // --- Export All button (Box 1) ----------------------------------------
