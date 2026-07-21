@@ -24,7 +24,7 @@ The illuminated region is a uniformly lit disc ("spot") of adjustable radius
 centered on the sensor; everywhere outside the spot receives zero incident
 photons (dark current and read noise only).
 
-## The six panels
+## The seven panels
 
 1. **Camera Simulator** - a live, false-color rendering of the full sensor
    frame. Each click of Play generates a new independent noise realization
@@ -42,6 +42,9 @@ photons (dark current and read noise only).
 6. **Parameters** - Experimental parameters (incident photons, exposure
    time, spot radius) and Camera parameters (quantum efficiency, dark
    current, read noise, full well capacity, offset, gain, bit depth).
+7. **Camera Sensitivity Comparison** - Compare SNR curves for up to five
+   cameras. SNR is plotted against photons and then normalized for a 13
+   micron pixel.
 
 Panels 1-3 update live while Play is running. Panels 4-5 are analytic
 curves that only recompute when a parameter changes.
