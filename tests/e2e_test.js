@@ -52,8 +52,10 @@ window.HTMLCanvasElement.prototype.getContext = function () {
     moveTo: (x, y) => rowIndicatorCalls.push({ fn: "moveTo", x, y }),
     lineTo: (x, y) => rowIndicatorCalls.push({ fn: "lineTo", x, y }),
     stroke: () => {},
-    setLineDash: () => {},
-    set lineWidth(v) {},
+    setLineDash: (segments) => rowIndicatorCalls.push({ fn: "setLineDash", segments }),
+    set lineWidth(v) {
+      rowIndicatorCalls.push({ fn: "lineWidth", value: v });
+    },
     set strokeStyle(v) {
       rowIndicatorCalls.push({ fn: "strokeStyle", value: v });
     },
@@ -127,11 +129,17 @@ const offsetNumberEl = window.document.getElementById("offset-number");
 check("Default gain is 1", parseFloat(gainNumberEl.value) === 1, gainNumberEl.value);
 check("Default offset is 100", parseFloat(offsetNumberEl.value) === 100, offsetNumberEl.value);
 
-// --- 1. Controls were built: 3 experimental + 7 camera (incl. bit depth select) ---
+// --- 1. Controls were built: 3 experimental + 7 camera sliders + bit depth
+//        select + EM Gain's own two .param-control-classed wrapper elements
+//        (its outer checkbox group and its inner slider) ---
 const expControls = window.document.querySelectorAll("#experimental-controls .param-control");
 const camControls = window.document.querySelectorAll("#camera-controls .param-control");
 check("3 experimental parameter controls created", expControls.length === 3, expControls.length);
-check("8 camera parameter controls created (7 sliders + bit depth select)", camControls.length === 8, camControls.length);
+check(
+  "14 camera parameter controls created (7 sliders + bit depth select + EM Gain group + EM Gain slider + Register Well Depth + Binning group + 2 bin selects)",
+  camControls.length === 14,
+  camControls.length
+);
 
 const pixelSizeNumberEl = window.document.getElementById("pixel-size-number");
 check("Pixel Size control exists with default 13", !!pixelSizeNumberEl && parseFloat(pixelSizeNumberEl.value) === 13, pixelSizeNumberEl && pixelSizeNumberEl.value);
@@ -155,6 +163,35 @@ check("Histogram title has no 'Panel' prefix", lastHist.layout.title.text === "I
 check("Histogram x-axis title is 'Calculated ADU'", lastHist.layout.xaxis.title === "Calculated ADU");
 check("Histogram y-axis title is 'Pixel Count'", lastHist.layout.yaxis.title === "Pixel Count");
 check("Histogram legend is hidden", lastHist.layout.showlegend === false);
+check("Histogram y-axis defaults to linear scale", lastHist.layout.yaxis.type === "linear", lastHist.layout.yaxis.type);
+
+// --- 3b. Histogram Linear/Log toggle button (left of Export, Panel 2 header) ---
+const histogramScaleToggleBtn = window.document.getElementById("histogram-scale-toggle-btn");
+check("Histogram scale toggle button exists", !!histogramScaleToggleBtn);
+check(
+  "Toggle button reads 'Change to Log' by default (unambiguous action label, not just the target scale's name)",
+  histogramScaleToggleBtn.textContent === "Change to Log",
+  histogramScaleToggleBtn.textContent
+);
+check(
+  "Toggle button lives in Panel 2's header, on the opposite side from Export",
+  window.document.querySelector("#panel-2 .panel-header").contains(histogramScaleToggleBtn)
+);
+
+const histBarBeforeToggle = lastCallForDiv("histogram-chart").traces[0].y.slice();
+histogramScaleToggleBtn.dispatchEvent(new window.Event("click"));
+const histAfterToggle = lastCallForDiv("histogram-chart");
+check("Clicking the toggle switches the y-axis to log scale", histAfterToggle.layout.yaxis.type === "log", histAfterToggle.layout.yaxis.type);
+check("Toggle button now reads 'Change to Linear' (action: switch back)", histogramScaleToggleBtn.textContent === "Change to Linear", histogramScaleToggleBtn.textContent);
+check(
+  "Toggling the scale redraws the SAME bar data (no resimulation), only the axis scale changes",
+  histAfterToggle.traces[0].y.every((v, i) => v === histBarBeforeToggle[i])
+);
+
+histogramScaleToggleBtn.dispatchEvent(new window.Event("click"));
+const histAfterSecondToggle = lastCallForDiv("histogram-chart");
+check("Clicking the toggle again switches back to linear scale", histAfterSecondToggle.layout.yaxis.type === "linear", histAfterSecondToggle.layout.yaxis.type);
+check("Toggle button reads 'Change to Log' again", histogramScaleToggleBtn.textContent === "Change to Log", histogramScaleToggleBtn.textContent);
 check("Histogram axes are boxed (showline + mirror)", lastHist.layout.xaxis.mirror === true && lastHist.layout.yaxis.mirror === true);
 
 // --- 4. Line profile has 1024 points, values within the reported y-range, signal-mean marker present ---
@@ -213,6 +250,228 @@ check("Noise chart axes are boxed too", lastNoise.layout.xaxis.mirror === true);
 
 // --- 6b. Three-column layout structure ---
 check("Params column (Box 6) present", !!window.document.querySelector(".params-column"));
+
+// --- Parameters panel header: same height/class as Box 1's header, title
+// "Parameters", Info icon on the right ---
+const panel6Header = window.document.querySelector("#panel-6 > .panel-header");
+const panel1Header = window.document.querySelector("#panel-1 > .panel-header");
+check("Parameters panel (Box 6) has its own header", !!panel6Header);
+check(
+  "Parameters panel header uses the same base .panel-header class as Box 1's header (no -plot/-split modifier), so it renders at the same height",
+  !!panel6Header && !panel6Header.classList.contains("panel-header-plot") && !panel6Header.classList.contains("panel-header-split")
+  && !!panel1Header && !panel1Header.classList.contains("panel-header-plot") && !panel1Header.classList.contains("panel-header-split")
+);
+const panel6Title = panel6Header && panel6Header.querySelector("h2");
+check("Parameters panel header title reads 'Parameters'", !!panel6Title && panel6Title.textContent === "Parameters", panel6Title && panel6Title.textContent);
+const panel6InfoBtn = window.document.getElementById("panel-6-info-btn");
+check("Parameters panel header has an Info icon button", !!panel6InfoBtn && !!panel6InfoBtn.querySelector("svg.icon-info"));
+check(
+  "Parameters panel Info icon sits on the right side of the header",
+  panel6Header && panel6Header.lastElementChild.contains(panel6InfoBtn)
+);
+
+const panel6InfoOverlay = window.document.getElementById("panel-6-info-overlay");
+check("Parameters panel Info overlay exists and starts hidden", !!panel6InfoOverlay && panel6InfoOverlay.hidden === true);
+panel6InfoBtn.dispatchEvent(new window.Event("click"));
+check("Clicking the Parameters panel Info icon opens its overlay", panel6InfoOverlay.hidden === false);
+window.document.getElementById("panel-6-info-close-btn").dispatchEvent(new window.Event("click"));
+check("Parameters panel Info overlay closes via its close button", panel6InfoOverlay.hidden === true);
+
+// --- Camera Type subsection: above Experimental Parameters, no header bar ---
+const controlsGroups = Array.from(window.document.querySelectorAll(".params-column .controls-group"));
+check("Params column has 3 controls-groups: Camera Type, Experimental, Camera (Binning now lives inside Camera Parameters)", controlsGroups.length === 3, controlsGroups.length);
+const groupHeadings = controlsGroups.map((g) => g.querySelector("h3").textContent);
+check(
+  "Camera Type subsection appears first, in the expected order",
+  JSON.stringify(groupHeadings) === JSON.stringify(["Camera Type", "Experimental Parameters", "Camera Parameters"]),
+  groupHeadings
+);
+
+// --- Experimental/Camera Parameters are collapsible via a chevron header ---
+const collapsibleGroups = [
+  { groupId: "experimental-group", toggleBtnId: "experimental-group-toggle", listId: "experimental-controls" },
+  { groupId: "camera-group", toggleBtnId: "camera-group-toggle", listId: "camera-controls" },
+];
+for (const { groupId, toggleBtnId, listId } of collapsibleGroups) {
+  const group = window.document.getElementById(groupId);
+  const toggleBtn = window.document.getElementById(toggleBtnId);
+  const list = window.document.getElementById(listId);
+  check(`${groupId}: collapsible group exists with a chevron toggle button`, !!group && !!toggleBtn && !!toggleBtn.querySelector("svg.icon-chevron"));
+  check(`${groupId}: starts expanded (not collapsed)`, !group.classList.contains("is-collapsed") && toggleBtn.getAttribute("aria-expanded") === "true");
+
+  toggleBtn.dispatchEvent(new window.Event("click"));
+  check(`${groupId}: clicking the header collapses the group`, group.classList.contains("is-collapsed") && toggleBtn.getAttribute("aria-expanded") === "false");
+
+  toggleBtn.dispatchEvent(new window.Event("click"));
+  check(`${groupId}: clicking again re-expands the group`, !group.classList.contains("is-collapsed") && toggleBtn.getAttribute("aria-expanded") === "true");
+  check(`${groupId}: the parameter list itself is untouched by collapsing (still present in the DOM)`, !!list);
+}
+
+const sensorTypeBtns = Array.from(window.document.querySelectorAll(".sensor-type-btn"));
+check("Camera Type subsection has exactly 3 sensor-type buttons", sensorTypeBtns.length === 3, sensorTypeBtns.length);
+check(
+  "Sensor-type buttons read CCD, sCMOS, InGaAs in order",
+  JSON.stringify(sensorTypeBtns.map((b) => b.textContent)) === JSON.stringify(["CCD", "sCMOS", "InGaAs"]),
+  sensorTypeBtns.map((b) => b.textContent)
+);
+
+const ccdBtn = window.document.getElementById("sensor-type-ccd-btn");
+const scmosBtn = window.document.getElementById("sensor-type-scmos-btn");
+const ingaasBtn = window.document.getElementById("sensor-type-ingaas-btn");
+check("CCD is selected (highlighted) by default on load", ccdBtn.classList.contains("is-active")
+  && !scmosBtn.classList.contains("is-active") && !ingaasBtn.classList.contains("is-active"));
+
+// Default (CCD) parameter values loaded on start, per the provided per-camera-type CSV.
+function readCameraTypeParams() {
+  return {
+    photons: parseFloat(window.document.getElementById("photons-number").value),
+    qe: parseFloat(window.document.getElementById("qe-number").value),
+    darkCurrent: parseFloat(window.document.getElementById("dark-current-number").value),
+    readNoise: parseFloat(window.document.getElementById("read-noise-number").value),
+    fullWell: parseFloat(window.document.getElementById("full-well-number").value),
+    offset: parseFloat(window.document.getElementById("offset-number").value),
+    gain: parseFloat(window.document.getElementById("gain-number").value),
+    pixelSize: parseFloat(window.document.getElementById("pixel-size-number").value),
+    bitDepth: Number(window.document.getElementById("bit-depth-select").value),
+  };
+}
+check(
+  "CCD defaults are loaded on start",
+  JSON.stringify(readCameraTypeParams()) === JSON.stringify({ photons: 20, qe: 0.95, darkCurrent: 0.00013, readNoise: 2.9, fullWell: 100000, offset: 100, gain: 1, pixelSize: 13, bitDepth: 16 }),
+  readCameraTypeParams()
+);
+
+scmosBtn.dispatchEvent(new window.Event("click"));
+check("Clicking sCMOS highlights it and un-highlights CCD",
+  scmosBtn.classList.contains("is-active") && !ccdBtn.classList.contains("is-active") && !ingaasBtn.classList.contains("is-active"));
+check(
+  "Clicking sCMOS loads its defaults",
+  JSON.stringify(readCameraTypeParams()) === JSON.stringify({ photons: 20, qe: 0.82, darkCurrent: 0.02, readNoise: 1.2, fullWell: 30000, offset: 100, gain: 1, pixelSize: 6.5, bitDepth: 16 }),
+  readCameraTypeParams()
+);
+
+ingaasBtn.dispatchEvent(new window.Event("click"));
+check("Clicking InGaAs highlights it and un-highlights sCMOS",
+  ingaasBtn.classList.contains("is-active") && !ccdBtn.classList.contains("is-active") && !scmosBtn.classList.contains("is-active"));
+check(
+  "Clicking InGaAs loads its defaults",
+  JSON.stringify(readCameraTypeParams()) === JSON.stringify({ photons: 100, qe: 0.7, darkCurrent: 365, readNoise: 23, fullWell: 1400000, offset: 100, gain: 1, pixelSize: 15, bitDepth: 14 }),
+  readCameraTypeParams()
+);
+
+window.document.getElementById("reset-defaults-btn").dispatchEvent(new window.Event("click"));
+check("Reset to Default re-selects CCD", ccdBtn.classList.contains("is-active")
+  && !scmosBtn.classList.contains("is-active") && !ingaasBtn.classList.contains("is-active"));
+check(
+  "Reset to Default reloads CCD's defaults (not just whichever type was last selected)",
+  JSON.stringify(readCameraTypeParams()) === JSON.stringify({ photons: 20, qe: 0.95, darkCurrent: 0.00013, readNoise: 2.9, fullWell: 100000, offset: 100, gain: 1, pixelSize: 13, bitDepth: 16 }),
+  readCameraTypeParams()
+);
+
+// --- EM Gain (CCD-only camera parameter) ---
+const emGainCheckbox = window.document.getElementById("em-gain-checkbox");
+const emGainGroup = window.document.getElementById("em-gain-group");
+const emGainSliderWrapper = window.document.querySelector(".em-gain-slider");
+check("EM Gain checkbox exists", !!emGainCheckbox);
+check("EM Gain group is visible by default (CCD is selected)", !!emGainGroup && emGainGroup.hidden === false);
+check("EM Gain checkbox starts unchecked", emGainCheckbox.checked === false);
+check("EM Gain slider is hidden until the checkbox is checked", !!emGainSliderWrapper && emGainSliderWrapper.hidden === true);
+
+function currentSnrMarkerY() {
+  const call = lastCallForDiv("snr-chart");
+  const marker = call.traces.find((t) => t.marker && t.marker.color === "#e63946");
+  return marker.y[0];
+}
+
+const baselineSNR = currentSnrMarkerY();
+
+emGainCheckbox.checked = true;
+emGainCheckbox.dispatchEvent(new window.Event("change"));
+check("Checking EM Gain reveals the slider", emGainSliderWrapper.hidden === false);
+
+const emGainNumberEl = window.document.getElementById("em-gain-number");
+check("EM Gain slider/number defaults to 1", parseFloat(emGainNumberEl.value) === 1, emGainNumberEl.value);
+check("EM Gain slider bounds are [1, 1000]", emGainNumberEl.min === "1" && emGainNumberEl.max === "1000");
+
+// Checking the box alone (before touching the slider, EM Gain still at its
+// default of 1) already changes the SNR - QE is halved for the calculation
+// as soon as EM Gain is enabled, independent of the multiplier's value.
+const expectedSignalGain1 = Math.min(20 * (0.95 / 2) * 1, 100000);
+const expectedShotGain1 = Math.sqrt(expectedSignalGain1);
+const expectedNoiseTotalGain1 = Math.sqrt(expectedShotGain1 ** 2 + (0.00013) + 2.9 ** 2);
+const expectedSNRGain1 = expectedSignalGain1 / expectedNoiseTotalGain1;
+check(
+  "Checking EM Gain (still at 1x) already halves QE for the calculation",
+  Math.abs(currentSnrMarkerY() - expectedSNRGain1) < 1e-3,
+  { actual: currentSnrMarkerY(), expected: expectedSNRGain1 }
+);
+
+emGainNumberEl.value = "100";
+emGainNumberEl.dispatchEvent(new window.Event("change"));
+
+// Expected SNR with EM Gain: effective QE = (CCD QE / 2) * EM Gain, fed into
+// the exact same shot-noise/SNR formulas physics.js already uses - computed
+// independently here from the CCD defaults (QE 0.95, dark current 0.00013,
+// read noise 2.9, full well 100,000, exposure 1.0s) and current photons (20).
+const expectedSignal = Math.min(20 * (0.95 / 2) * 100, 100000);
+const expectedShot = Math.sqrt(expectedSignal);
+const expectedDarkNoise = Math.sqrt(0.00013 * 1.0);
+const expectedReadNoise = 2.9;
+const expectedNoiseTotal = Math.sqrt(expectedShot ** 2 + expectedDarkNoise ** 2 + expectedReadNoise ** 2);
+const expectedSNR = expectedSignal / expectedNoiseTotal;
+check(
+  "EM Gain 100x: current-SNR marker matches the (QE/2)*EMGain formula",
+  Math.abs(currentSnrMarkerY() - expectedSNR) < 1e-3,
+  { actual: currentSnrMarkerY(), expected: expectedSNR }
+);
+
+emGainCheckbox.checked = false;
+emGainCheckbox.dispatchEvent(new window.Event("change"));
+check("Unchecking EM Gain hides the slider again", emGainSliderWrapper.hidden === true);
+check("Unchecking EM Gain reverts SNR to the un-amplified baseline value", Math.abs(currentSnrMarkerY() - baselineSNR) < 1e-6);
+
+scmosBtn.dispatchEvent(new window.Event("click"));
+check("EM Gain group is hidden for sCMOS", emGainGroup.hidden === true);
+ingaasBtn.dispatchEvent(new window.Event("click"));
+check("EM Gain group is hidden for InGaAs", emGainGroup.hidden === true);
+ccdBtn.dispatchEvent(new window.Event("click"));
+check("EM Gain group reappears, unchecked, when CCD is reselected", emGainGroup.hidden === false && emGainCheckbox.checked === false);
+
+emGainCheckbox.checked = true;
+emGainCheckbox.dispatchEvent(new window.Event("change"));
+window.document.getElementById("reset-defaults-btn").dispatchEvent(new window.Event("click"));
+check("Reset to Default turns EM Gain back off and hides its slider", emGainCheckbox.checked === false && emGainSliderWrapper.hidden === true);
+
+// --- Params panel scroll structure: Camera Type stays pinned above the
+// scroll area, Experimental/Camera Parameters groups scroll, Reset stays
+// pinned below the scroll area ---
+const paramsScrollArea = window.document.querySelector(".params-column .params-scroll-area");
+check("Params column has a dedicated scroll area wrapping the controls-groups", !!paramsScrollArea);
+check("Only the 2 collapsible groups (Experimental, Camera Parameters) live inside the scroll area", paramsScrollArea.querySelectorAll(".controls-group").length === 2);
+const sensorTypeWrapperEl = window.document.querySelector(".params-column .sensor-type-wrapper");
+check(
+  "Camera Type's wrapper is a sibling of the scroll area, not inside it (stays pinned/immovable on screen)",
+  !!sensorTypeWrapperEl && !paramsScrollArea.contains(sensorTypeWrapperEl) && sensorTypeWrapperEl.parentElement === paramsScrollArea.parentElement
+);
+check(
+  "Camera Type's wrapper comes before the scroll area in the DOM",
+  !!sensorTypeWrapperEl && !!paramsScrollArea
+  && sensorTypeWrapperEl.compareDocumentPosition(paramsScrollArea) & window.Node.DOCUMENT_POSITION_FOLLOWING
+);
+check(
+  "A divider marks the boundary below the Camera Type boxes, above the scroll area",
+  !!sensorTypeWrapperEl && !!sensorTypeWrapperEl.querySelector(".reset-divider")
+);
+const resetWrapperEl = window.document.querySelector(".params-column .reset-wrapper");
+check(
+  "Reset to Default's wrapper is a sibling of the scroll area, not inside it (stays pinned on screen)",
+  !!resetWrapperEl && !paramsScrollArea.contains(resetWrapperEl) && resetWrapperEl.parentElement === paramsScrollArea.parentElement
+);
+check(
+  "A divider marks the scroll boundary above the Reset to Default button",
+  !!resetWrapperEl && !!resetWrapperEl.querySelector(".reset-divider")
+);
+
 check("Center column (Box 1 + info) present", !!window.document.querySelector(".center-column"));
 check("Plots column (Boxes 2-5) present", !!window.document.querySelector(".plots-column"));
 
@@ -268,6 +527,107 @@ const infoModalBox = window.document.querySelector(".info-modal");
 infoModalBox.dispatchEvent(new window.Event("click", { bubbles: true })); // click inside the modal box itself, not the backdrop
 check("Clicking inside the modal box (not the backdrop) does NOT close the overlay", infoOverlay.hidden === false);
 infoOverlay.hidden = true; // leave state clean for any later checks
+
+// --- Info buttons are icon-only (no text label) everywhere they appear ---
+check("Header Info button has no text label (icon-only)", infoBtn.textContent.trim() === "", infoBtn.textContent);
+check("Header Info button contains the info-circle SVG icon", !!infoBtn.querySelector("svg.icon-info"));
+check("Header Info button keeps an accessible label via aria-label/title", infoBtn.getAttribute("aria-label") === "Info" && infoBtn.title === "Info");
+
+const comparisonInfoBtnIcon = window.document.getElementById("comparison-info-btn");
+check("Comparison panel Info button has no text label (icon-only)", comparisonInfoBtnIcon.textContent.trim() === "", comparisonInfoBtnIcon.textContent);
+check("Comparison panel Info button contains the info-circle SVG icon", !!comparisonInfoBtnIcon.querySelector("svg.icon-info"));
+
+// --- One Info icon button + overlay per Box 1-5 panel, right side of each header ---
+const perPanelInfo = [
+  { panelId: "panel-1", btnId: "panel-1-info-btn", overlayId: "panel-1-info-overlay", closeBtnId: "panel-1-info-close-btn" },
+  { panelId: "panel-2", btnId: "panel-2-info-btn", overlayId: "panel-2-info-overlay", closeBtnId: "panel-2-info-close-btn" },
+  { panelId: "panel-3", btnId: "panel-3-info-btn", overlayId: "panel-3-info-overlay", closeBtnId: "panel-3-info-close-btn" },
+  { panelId: "panel-4", btnId: "panel-4-info-btn", overlayId: "panel-4-info-overlay", closeBtnId: "panel-4-info-close-btn" },
+  { panelId: "panel-5", btnId: "panel-5-info-btn", overlayId: "panel-5-info-overlay", closeBtnId: "panel-5-info-close-btn" },
+];
+
+for (const { panelId, btnId, overlayId, closeBtnId } of perPanelInfo) {
+  const btn = window.document.getElementById(btnId);
+  const overlay = window.document.getElementById(overlayId);
+  const closeBtn = window.document.getElementById(closeBtnId);
+
+  check(`${panelId}: Info icon button exists`, !!btn);
+  check(`${panelId}: Info icon button has no text label (icon-only)`, !!btn && btn.textContent.trim() === "", btn && btn.textContent);
+  check(`${panelId}: Info icon button contains the info-circle SVG icon`, !!btn && !!btn.querySelector("svg.icon-info"));
+
+  const controlsInHeader = Array.from(window.document.querySelectorAll(`#${panelId} .panel-header button`));
+  check(
+    `${panelId}: Info icon button is the LAST (rightmost) button in its header`,
+    controlsInHeader.length > 0 && controlsInHeader[controlsInHeader.length - 1] === btn,
+    controlsInHeader.map((b) => b.id)
+  );
+
+  check(`${panelId}: Info overlay exists and starts hidden`, !!overlay && overlay.hidden === true);
+  btn.dispatchEvent(new window.Event("click"));
+  check(`${panelId}: clicking the Info icon opens its overlay`, overlay.hidden === false);
+  check(
+    `${panelId}: overlay shows placeholder text (content to be filled in later)`,
+    window.document.getElementById(`${panelId}-info-modal-content`).textContent.includes("Info coming soon")
+  );
+  closeBtn.dispatchEvent(new window.Event("click"));
+  check(`${panelId}: Info overlay closes via its close button`, overlay.hidden === true);
+}
+
+// --- Comparison panel Export button: sits to the left of the Info button ---
+const exportComparisonBtn = window.document.getElementById("export-comparison-btn");
+check("Comparison panel Export button exists", !!exportComparisonBtn);
+const comparisonHeaderControls = Array.from(window.document.querySelectorAll("#panel-comparison .panel-controls button")).map((b) => b.id);
+check(
+  "Export button sits to the left of the Info button in the Comparison panel header",
+  JSON.stringify(comparisonHeaderControls) === JSON.stringify(["export-comparison-btn", "comparison-info-btn"]),
+  comparisonHeaderControls
+);
+
+// Save two traces (with different pixel sizes, so raw vs. normalized differ), then export.
+// (Using getElementById directly here rather than the later-declared `compareBtn`
+// const, since this block runs before that declaration is reached.)
+const compareBtnForExportTest = window.document.getElementById("compare-btn");
+pixelSizeNumberEl.value = "26"; // ratio = 4
+pixelSizeNumberEl.dispatchEvent(new window.Event("change"));
+promptQueue.push("Export Cam A");
+compareBtnForExportTest.dispatchEvent(new window.Event("click"));
+pixelSizeNumberEl.value = "6.5"; // ratio = 0.25
+pixelSizeNumberEl.dispatchEvent(new window.Event("change"));
+promptQueue.push("Export Cam B");
+compareBtnForExportTest.dispatchEvent(new window.Event("click"));
+
+downloadImageCalls.length = 0;
+lastBlobText = null;
+exportComparisonBtn.dispatchEvent(new window.Event("click"));
+
+check("Exporting downloads exactly 2 Plotly PNGs (both comparison plots)", downloadImageCalls.length === 2, downloadImageCalls.length);
+const exportedPngDivs = downloadImageCalls.map((c) => c.divId).sort();
+check(
+  "The 2 exported PNGs are comparison-plot-1 and comparison-plot-2",
+  JSON.stringify(exportedPngDivs) === JSON.stringify(["comparison-plot-1", "comparison-plot-2"]),
+  exportedPngDivs
+);
+
+check("Exporting produced a text file", lastBlobText !== null);
+const comparisonCsvLines = (lastBlobText || "").trim().split("\n");
+check("Comparison export header lists both saved trace names", comparisonCsvLines.some((l) => l.includes("Export Cam A") && l.includes("Export Cam B")));
+const comparisonHeaderRowIdx = comparisonCsvLines.indexOf("TraceName,IncidentPhotons,SNR,NormalizedSNR_13umPixel");
+check("Comparison export CSV has the expected 4-column header row", comparisonHeaderRowIdx !== -1);
+const comparisonDataRows = comparisonCsvLines.slice(comparisonHeaderRowIdx + 1).map((l) => l.split(","));
+check("Comparison export includes rows for both trace names", comparisonDataRows.some((r) => r[0] === "Export Cam A") && comparisonDataRows.some((r) => r[0] === "Export Cam B"));
+const camARow = comparisonDataRows.find((r) => r[0] === "Export Cam A");
+check(
+  "A Camera A row's NormalizedSNR column equals SNR * 4 (its pixel-size ratio at save time)",
+  Math.abs(Number(camARow[3]) - Number(camARow[2]) * 4) < 1e-6,
+  camARow
+);
+
+// Clean up the two traces saved for this test.
+while (window.document.querySelectorAll("#comparison-legend .comparison-legend-delete").length > 0) {
+  window.document.querySelector("#comparison-legend .comparison-legend-delete").dispatchEvent(new window.Event("click"));
+}
+pixelSizeNumberEl.value = "13";
+pixelSizeNumberEl.dispatchEvent(new window.Event("change"));
 
 // --- Comparison panel Info overlay: explains the Normalized SNR plot ---
 const comparisonInfoBtn = window.document.getElementById("comparison-info-btn");
@@ -475,6 +835,156 @@ check(
   { width: postResetPutImageData.imageData.width, height: postResetPutImageData.imageData.height }
 );
 
+// --- Binning: checkbox-gated (like EM Gain), inside Camera Parameters ---
+// Binning no longer changes the sensor's field of view at all - it only
+// changes how big the "super pixels" look. The canvas always stays at the
+// sensor's native width x height; resizing the sensor always resets binning
+// back to 1x1 (and unchecks the Binning checkbox) rather than the old
+// snap-the-sensor-to-the-bin behavior.
+const binningCheckbox = window.document.getElementById("binning-checkbox");
+const binHorizontalSelect = window.document.getElementById("bin-horizontal-select");
+const binVerticalSelect = window.document.getElementById("bin-vertical-select");
+const binningSelectRowEl = binHorizontalSelect.closest(".binning-select-row");
+check("Binning checkbox and Horizontal/Vertical selects exist", !!binningCheckbox && !!binHorizontalSelect && !!binVerticalSelect);
+check("Binning checkbox is unchecked by default", binningCheckbox.checked === false);
+check("Binning select row is hidden by default (matches unchecked state)", binningSelectRowEl.hidden === true);
+check("Horizontal bin defaults to 1", binHorizontalSelect.value === "1", binHorizontalSelect.value);
+check("Vertical bin defaults to 1", binVerticalSelect.value === "1", binVerticalSelect.value);
+check(
+  "Binning checkbox lives inside Camera Parameters, not its own controls-group",
+  window.document.getElementById("camera-controls").contains(binningCheckbox)
+);
+
+// Regression guard for a real bug found in testing: .binning-select-row's
+// own `display: grid` rule has the SAME CSS specificity as the browser's
+// built-in `[hidden] { display: none }` rule, so without an explicit
+// `.binning-select-row[hidden] { display: none }` override, the author
+// stylesheet rule wins and the row stays visually shown (and clickable) even
+// while `hidden` is true - meaning unchecking Binning didn't actually hide
+// or disable the Horizontal/Vertical selects in a real browser, even though
+// the `.hidden` IDL property (which jsdom's DOM-only checks above rely on)
+// correctly read true the whole time. Checked directly against the raw CSS
+// text since jsdom doesn't run a full layout/cascade engine.
+const styleCssText = fs.readFileSync(path.join(SITE_DIR, "style.css"), "utf8");
+check(
+  "style.css has the [hidden] specificity-override rule for .binning-select-row",
+  /\.binning-select-row\[hidden\]\s*\{[^}]*display:\s*none/.test(styleCssText),
+  styleCssText.includes(".binning-select-row[hidden]")
+);
+
+const baseLineWidthCall = rowIndicatorCalls.filter((c) => c.fn === "lineWidth").pop();
+const baseDashCall = rowIndicatorCalls.filter((c) => c.fn === "setLineDash").pop();
+check(
+  "Row indicator line uses the base thickness (2px) with no binning active",
+  baseLineWidthCall && baseLineWidthCall.value === 2,
+  baseLineWidthCall && baseLineWidthCall.value
+);
+check(
+  "Row indicator dash uses the base pattern ([10, 6]) with no binning active",
+  baseDashCall && JSON.stringify(baseDashCall.segments) === JSON.stringify([10, 6]),
+  baseDashCall && baseDashCall.segments
+);
+
+// Checking the box reveals the selects, same pattern as EM Gain's checkbox.
+binningCheckbox.checked = true;
+binningCheckbox.dispatchEvent(new window.Event("change"));
+check("Checking Binning reveals the Horizontal/Vertical select row", binningSelectRowEl.hidden === false);
+
+// Set a sensor size that is NOT an exact multiple of the bin factors we're
+// about to select, to exercise the dead-strip edge case below.
+sensorWidthInput.value = "1030";
+sensorHeightInput.value = "1030";
+sensorWidthInput.dispatchEvent(new window.Event("change"));
+sensorHeightInput.dispatchEvent(new window.Event("change"));
+check("Sensor size accepts 1030x1030", parseFloat(sensorWidthInput.value) === 1030 && parseFloat(sensorHeightInput.value) === 1030);
+
+// A resize resets AND unchecks Binning (see below); re-check it to continue exercising the selects.
+check("Resizing the sensor unchecked Binning", binningCheckbox.checked === false);
+binningCheckbox.checked = true;
+binningCheckbox.dispatchEvent(new window.Event("change"));
+
+binHorizontalSelect.value = "4";
+binHorizontalSelect.dispatchEvent(new window.Event("change"));
+check("Selecting Horizontal bin = 4 does NOT change sensor width", parseFloat(sensorWidthInput.value) === 1030, sensorWidthInput.value);
+check("Selecting Horizontal bin = 4 does NOT change sensor height", parseFloat(sensorHeightInput.value) === 1030, sensorHeightInput.value);
+
+binVerticalSelect.value = "8";
+binVerticalSelect.dispatchEvent(new window.Event("change"));
+check("Selecting Vertical bin = 8 does NOT change sensor width", parseFloat(sensorWidthInput.value) === 1030, sensorWidthInput.value);
+check("Selecting Vertical bin = 8 does NOT change sensor height", parseFloat(sensorHeightInput.value) === 1030, sensorHeightInput.value);
+
+// The canvas pixel buffer stays at the sensor's native size regardless of binning.
+const binnedFrameImageData = putImageDataCalls[putImageDataCalls.length - 1].imageData;
+check(
+  "Canvas stays at the full native 1030x1030 sensor size while a 4x8 bin is active",
+  binnedFrameImageData.width === 1030 && binnedFrameImageData.height === 1030,
+  { width: binnedFrameImageData.width, height: binnedFrameImageData.height }
+);
+
+// 1030 is not an exact multiple of either bin factor (4 or 8): the active
+// region is floor(1030/4)*4 = 1028 columns and floor(1030/8)*8 = 1024 rows,
+// leaving a 2px-wide dead strip on the right and a 6px-tall dead strip on
+// the bottom, both rendered fully black/unilluminated (alpha still 255).
+const binnedData = binnedFrameImageData.data;
+function pixelAt(data, width, x, y) {
+  const p = (y * width + x) * 4;
+  return { r: data[p], g: data[p + 1], b: data[p + 2], a: data[p + 3] };
+}
+const deadRightPixel = pixelAt(binnedData, 1030, 1029, 500); // last column, an interior row
+const deadBottomPixel = pixelAt(binnedData, 1030, 500, 1029); // last row, an interior column
+const activePixel = pixelAt(binnedData, 1030, 500, 500); // well within the active 1028x1024 region
+check(
+  "Dead strip beyond the last full horizontal bin renders fully black",
+  deadRightPixel.r === 0 && deadRightPixel.g === 0 && deadRightPixel.b === 0 && deadRightPixel.a === 255,
+  deadRightPixel
+);
+check(
+  "Dead strip beyond the last full vertical bin renders fully black",
+  deadBottomPixel.r === 0 && deadBottomPixel.g === 0 && deadBottomPixel.b === 0 && deadBottomPixel.a === 255,
+  deadBottomPixel
+);
+check(
+  "A pixel well within the active binned region is NOT forced black (gets a real LUT color)",
+  !(activePixel.r === 0 && activePixel.g === 0 && activePixel.b === 0),
+  activePixel
+);
+
+// A manual resize resets binning back to 1x1 AND unchecks Binning, rather than re-snapping to it.
+sensorWidthInput.value = "1035";
+sensorWidthInput.dispatchEvent(new window.Event("change"));
+check("Manually resizing the sensor resets Horizontal bin back to 1", binHorizontalSelect.value === "1", binHorizontalSelect.value);
+check("Manually resizing the sensor resets Vertical bin back to 1", binVerticalSelect.value === "1", binVerticalSelect.value);
+check("Manually resizing the sensor unchecks Binning", binningCheckbox.checked === false);
+check("Manually resizing the sensor re-hides the bin select row", binningSelectRowEl.hidden === true);
+check("Manual resize takes the exact typed value (1035), no snapping", parseFloat(sensorWidthInput.value) === 1035, sensorWidthInput.value);
+
+// Row indicator line thickness/dash stay at their base size regardless of
+// binning, since the canvas never shrinks - re-check Binning, re-select a bin, and confirm.
+binningCheckbox.checked = true;
+binningCheckbox.dispatchEvent(new window.Event("change"));
+binHorizontalSelect.value = "4";
+binHorizontalSelect.dispatchEvent(new window.Event("change"));
+binVerticalSelect.value = "8";
+binVerticalSelect.dispatchEvent(new window.Event("change"));
+const boundLineWidthCall = rowIndicatorCalls.filter((c) => c.fn === "lineWidth").pop();
+const boundDashCall = rowIndicatorCalls.filter((c) => c.fn === "setLineDash").pop();
+check(
+  "Row indicator line thickness stays at the base 2px even with a 4x8 bin active",
+  boundLineWidthCall && boundLineWidthCall.value === 2,
+  boundLineWidthCall && boundLineWidthCall.value
+);
+check(
+  "Row indicator dash stays at the base [10, 6] pattern even with a 4x8 bin active",
+  boundDashCall && JSON.stringify(boundDashCall.segments) === JSON.stringify([10, 6]),
+  boundDashCall && boundDashCall.segments
+);
+
+// Reset to Default clears binning back to 1x1 and unchecks it (in addition to the sensor size reset already covered above).
+resetBtn.dispatchEvent(new window.Event("click"));
+check("Reset to Default restores Horizontal bin to 1", binHorizontalSelect.value === "1", binHorizontalSelect.value);
+check("Reset to Default restores Vertical bin to 1", binVerticalSelect.value === "1", binVerticalSelect.value);
+check("Reset to Default unchecks Binning", binningCheckbox.checked === false);
+
 // --- 16. SNR panel reverted to single-mode display; new "Compare" placeholder ---
 check("SNR mode toggle buttons no longer exist (feature reverted)",
   !window.document.getElementById("snr-mode-per-pixel-btn") && !window.document.getElementById("snr-mode-normalized-btn"));
@@ -502,6 +1012,77 @@ check(
 );
 pixelSizeNumberElForSNR.value = "13";
 pixelSizeNumberElForSNR.dispatchEvent(new window.Event("change"));
+
+// --- SNR panel: dashed "Single Pixel SNR" baseline + solid "Binned SNR" ---
+// active trace, shown only once EM Gain and/or Binning are active.
+check(
+  "SNR chart shows only 4 traces (hi band, lo band, single curve, marker) with no modifier active",
+  lastCallForDiv("snr-chart").traces.length === 4,
+  lastCallForDiv("snr-chart").traces.length
+);
+const singleCurveTrace = lastCallForDiv("snr-chart").traces[2];
+check(
+  "With no modifier active, the single SNR trace is solid (no dash)",
+  !singleCurveTrace.line.dash || singleCurveTrace.line.dash === "solid",
+  singleCurveTrace.line.dash
+);
+check(
+  "With no modifier active, hover omits the Single Pixel/Binned SNR labels",
+  singleCurveTrace.hovertemplate === "%{x:.1f}, %{y:.1f}<extra></extra>",
+  singleCurveTrace.hovertemplate
+);
+
+emGainCheckbox.checked = true;
+emGainCheckbox.dispatchEvent(new window.Event("change"));
+const emGainSnrNumberEl = window.document.getElementById("em-gain-number");
+emGainSnrNumberEl.value = "50";
+emGainSnrNumberEl.dispatchEvent(new window.Event("change"));
+
+const dualCall = lastCallForDiv("snr-chart");
+check("SNR chart grows a 5th trace (Binned SNR) once EM Gain is active", dualCall.traces.length === 5, dualCall.traces.length);
+const baselineTraceWithEmGain = dualCall.traces[2];
+const activeTraceWithEmGain = dualCall.traces[3];
+check("Baseline 'Single Pixel SNR' trace is dashed once EM Gain is active", baselineTraceWithEmGain.line.dash === "dash", baselineTraceWithEmGain.line.dash);
+check(
+  "Active 'Binned SNR' trace is solid",
+  !activeTraceWithEmGain.line.dash || activeTraceWithEmGain.line.dash === "solid",
+  activeTraceWithEmGain.line.dash
+);
+check(
+  "Baseline trace hover is labeled 'Single Pixel SNR'",
+  baselineTraceWithEmGain.hovertemplate.includes("Single Pixel SNR"),
+  baselineTraceWithEmGain.hovertemplate
+);
+check(
+  "Active trace hover is labeled 'Binned SNR'",
+  activeTraceWithEmGain.hovertemplate.includes("Binned SNR"),
+  activeTraceWithEmGain.hovertemplate
+);
+check(
+  "Baseline (Single Pixel) curve differs from the active (EM Gain-applied) curve",
+  !baselineTraceWithEmGain.y.every((v, i) => Math.abs(v - activeTraceWithEmGain.y[i]) < 1e-9)
+);
+
+// Compare should snapshot the ACTIVE curve, not the baseline, while EM Gain is on.
+promptQueue.push("EM Gain Camera");
+compareBtn.dispatchEvent(new window.Event("click"));
+const emGainComparisonTrace = lastCallForDiv("comparison-plot-1").traces[lastCallForDiv("comparison-plot-1").traces.length - 1];
+check(
+  "Compare saves the ACTIVE (Binned SNR) curve, not the baseline, when EM Gain is on",
+  emGainComparisonTrace.y.every((v, i) => Math.abs(v - activeTraceWithEmGain.y[i]) < 1e-9),
+  { saved: emGainComparisonTrace.y.slice(0, 5), active: activeTraceWithEmGain.y.slice(0, 5) }
+);
+
+// Clean up: remove the trace just added and turn EM Gain back off so the
+// Comparison panel section below starts from a clean, empty state.
+const emGainCleanupDeleteBtn = window.document.querySelector(".comparison-legend-delete");
+if (emGainCleanupDeleteBtn) emGainCleanupDeleteBtn.dispatchEvent(new window.Event("click"));
+emGainCheckbox.checked = false;
+emGainCheckbox.dispatchEvent(new window.Event("change"));
+check(
+  "Comparison panel is empty again after the EM Gain SNR test cleanup",
+  window.document.getElementById("comparison-legend").textContent.includes("No saved traces")
+);
 
 // --- 17. Camera Sensitivity Comparison panel: Compare button + two plots + legend ---
 check("Comparison plot 1 exists and Plotly was called for it", divsCalled.has("comparison-plot-1") || plotlyCalls.some((c) => c.divId === "comparison-plot-1"));
@@ -668,6 +1249,122 @@ check("Clicking the toggle collapses the legend wrap", legendWrap.classList.cont
 
 legendToggle.dispatchEvent(new window.Event("click"));
 check("Clicking the toggle again re-expands the legend wrap", !legendWrap.classList.contains("is-collapsed"));
+
+// --- 19. Latest aesthetic batch: Camera Type pinned, chevrons on the right,
+// transparent header Info icon, unified panel header heights ---
+
+// Chevron now renders AFTER the h3 text (right side) in both collapsible
+// group headers, and .controls-group-header lays them out with
+// space-between so the chevron sits at the far right edge, not just
+// immediately after the text.
+for (const { groupId, toggleBtnId } of collapsibleGroups) {
+  const toggleBtn = window.document.getElementById(toggleBtnId);
+  const h3 = toggleBtn.querySelector("h3");
+  const chevron = toggleBtn.querySelector("svg.icon-chevron");
+  check(
+    `${groupId}: chevron arrow sits to the right of the section title in markup`,
+    !!h3 && !!chevron && !!(h3.compareDocumentPosition(chevron) & window.Node.DOCUMENT_POSITION_FOLLOWING)
+  );
+}
+check(
+  "style.css lays out .controls-group-header with space-between so the chevron sits on the right edge",
+  /\.controls-group-header\s*\{[^}]*justify-content:\s*space-between/.test(styleCssText)
+);
+
+// Header Info button: transparent background/border so it blends into the
+// dark titlebar, scoped to .app-titlebar #info-btn so it doesn't affect the
+// solid-styled per-panel Info icons.
+check(
+  "style.css makes the header Info button transparent (background) against the titlebar",
+  /\.app-titlebar\s+#info-btn\s*\{[^}]*background:\s*transparent/.test(styleCssText)
+);
+check(
+  "style.css makes the header Info button transparent (border) against the titlebar",
+  /\.app-titlebar\s+#info-btn\s*\{[^}]*border-color:\s*transparent/.test(styleCssText)
+);
+check(
+  "Panel Info icons elsewhere (e.g. Box 1) are unaffected and keep their normal .btn/.icon-btn styling",
+  !!window.document.getElementById("panel-1-info-btn")
+);
+
+// All panel headers share the base .panel-header padding now - the -plot
+// and -split modifier classes no longer redeclare their own padding, so
+// every panel header (Box 1 through Box 6, plus the -plot/-split variants
+// used by Boxes 2-5) renders at the same height.
+check(
+  "style.css: .panel-header-plot no longer overrides padding (inherits the base .panel-header height)",
+  !/\.panel-header-plot\s*\{[^}]*padding:/.test(styleCssText)
+);
+check(
+  "style.css: .panel-header-split no longer overrides padding (inherits the base .panel-header height)",
+  !/\.panel-header-split\s*\{[^}]*padding:/.test(styleCssText)
+);
+
+// Camera Type immovable above the scroll area: reconfirm the sensor-type
+// buttons themselves still work correctly from their new fixed position.
+const sensorTypeWrapperFinal = window.document.querySelector(".params-column .sensor-type-wrapper");
+check(
+  "Camera Type wrapper still contains the CCD/sCMOS/InGaAs tabs after relocation",
+  !!sensorTypeWrapperFinal && sensorTypeWrapperFinal.querySelectorAll(".sensor-type-btn").length === 3
+);
+
+// --- 20. Camera Parameters reordered: Binning below Bit Depth (every
+// camera type); Register Well Depth directly below Full Well Depth; EM Gain
+// stays last (CCD only); EM Gain checkbox relabeled "Enable EM Gain" ---
+const camContainerFinal = window.document.getElementById("camera-controls");
+const camOrderKeys = Array.from(camContainerFinal.children).map((el) => {
+  if (el.querySelector("#qe-slider")) return "qe";
+  if (el.querySelector("#dark-current-slider")) return "darkCurrent";
+  if (el.querySelector("#read-noise-slider")) return "readNoise";
+  if (el.querySelector("#full-well-slider")) return "fullWell";
+  if (el.classList.contains("register-well-depth-control")) return "registerWellDepth";
+  if (el.querySelector("#offset-slider")) return "offset";
+  if (el.querySelector("#gain-slider")) return "gain";
+  if (el.querySelector("#pixel-size-slider")) return "pixelSize";
+  if (el.querySelector("#bit-depth-select")) return "bitDepth";
+  if (el.id === "binning-group") return "binning";
+  if (el.id === "em-gain-group") return "emGain";
+  return "unknown";
+});
+check(
+  "Camera Parameters render in the new order: ...Full Well Depth, Register Well Depth, Offset, Sensitivity, Pixel Size, Bit Depth, Binning, EM Gain",
+  JSON.stringify(camOrderKeys) === JSON.stringify([
+    "qe", "darkCurrent", "readNoise", "fullWell", "registerWellDepth",
+    "offset", "gain", "pixelSize", "bitDepth", "binning", "emGain",
+  ]),
+  camOrderKeys
+);
+check("Bit Depth sits directly below Pixel Size", camOrderKeys[camOrderKeys.indexOf("pixelSize") + 1] === "bitDepth");
+check("Binning sits directly below Bit Depth", camOrderKeys[camOrderKeys.indexOf("bitDepth") + 1] === "binning");
+check("Register Well Depth sits directly below Full Well Depth", camOrderKeys[camOrderKeys.indexOf("fullWell") + 1] === "registerWellDepth");
+check("EM Gain is the last control in the Camera Parameters list", camOrderKeys[camOrderKeys.length - 1] === "emGain");
+
+// Switching to a non-CCD type (which hides EM Gain and Register Well Depth,
+// but keeps them in the DOM) should not change the underlying DOM order.
+const scmosBtnOrderCheck = window.document.getElementById("sensor-type-scmos-btn");
+scmosBtnOrderCheck.dispatchEvent(new window.Event("click"));
+const camOrderKeysScmos = Array.from(camContainerFinal.children).map((el) => {
+  if (el.classList.contains("register-well-depth-control")) return "registerWellDepth";
+  if (el.querySelector("#bit-depth-select")) return "bitDepth";
+  if (el.id === "binning-group") return "binning";
+  if (el.id === "em-gain-group") return "emGain";
+  return "other";
+});
+check(
+  "sCMOS: DOM order is unchanged (Register Well Depth/EM Gain just hidden, not reordered/removed)",
+  camOrderKeysScmos.filter((k) => k !== "other").join(",") === "registerWellDepth,bitDepth,binning,emGain",
+  camOrderKeysScmos
+);
+window.document.getElementById("sensor-type-ccd-btn").dispatchEvent(new window.Event("click"));
+
+// EM Gain checkbox label reads "Enable EM Gain" (renamed from just "EM Gain"
+// to read more clearly as an action/toggle rather than a state label).
+const emGainCheckboxLabelFinal = window.document.querySelector(".em-gain-checkbox-label");
+check(
+  "EM Gain checkbox label reads 'Enable EM Gain'",
+  !!emGainCheckboxLabelFinal && emGainCheckboxLabelFinal.textContent.trim() === "Enable EM Gain",
+  emGainCheckboxLabelFinal && emGainCheckboxLabelFinal.textContent
+);
 
 console.log("\n" + (failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`));
 process.exit(failures === 0 ? 0 : 1);

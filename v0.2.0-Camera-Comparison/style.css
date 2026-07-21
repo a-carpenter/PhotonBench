@@ -52,22 +52,6 @@ html, body {
   color: #6b7280;
 }
 
-/* Header Info button: blends into the dark titlebar instead of standing out
-   as a solid button - background/border removed (overriding .btn's own),
-   icon dimmed to a muted grey-blue so it stays legible on #232833 without
-   drawing extra attention, brightening slightly on hover/focus. */
-.app-titlebar #info-btn {
-  background: transparent;
-  border-color: transparent;
-  color: #aeb4bf;
-}
-
-.app-titlebar #info-btn:hover,
-.app-titlebar #info-btn:focus-visible {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-}
-
 /* --- Info overlay: triggered by the header's Info button --- */
 
 .info-overlay {
@@ -169,42 +153,6 @@ html, body {
   gap: 8px;
 }
 
-/* Camera Type sub-section (Box 6): three equal-width buttons, evenly
-   spanning the section's width, selecting which camera family the
-   photoresponse model will eventually be based on (CCD by default). Only
-   one is ever active at a time - see setSensorType() in main.js. */
-.sensor-type-tabs {
-  display: flex;
-  gap: 8px;
-}
-
-.sensor-type-btn {
-  flex: 1 1 0;
-  min-width: 0;
-  text-align: center;
-}
-
-/* .btn.sensor-type-btn (two classes) beats plain .btn's uppercase transform
-   regardless of source order, since it's more specific - a plain
-   ".sensor-type-btn { text-transform: none }" rule was being overridden by
-   .btn's uppercase rule, which comes later in this file. "sCMOS" and
-   "InGaAs" carry meaningful case (the lowercase s in sCMOS, the lowercase
-   n/a/s in InGaAs), so these are the one set of buttons that shouldn't be
-   forced all-caps. */
-.btn.sensor-type-btn {
-  text-transform: none;
-}
-
-.sensor-type-btn.is-active {
-  background: #185fa5;
-  border-color: #185fa5;
-  color: #fff;
-}
-
-.sensor-type-btn.is-active:hover {
-  background: #12467c;
-}
-
 .sensor-dims {
   display: flex;
   align-items: center;
@@ -258,23 +206,17 @@ html, body {
 }
 
 #sensor-canvas {
-  /* object-fit:contain scales the sensor image to fit fully inside the box
-     on whichever axis is tighter, letterboxing the other axis symmetrically
-     (equal white space on both sides of that axis) - matching typical
-     camera sensors of any aspect ratio, wide or tall, without ever
-     exceeding the box. (An earlier width-only-peg approach traded this
-     symmetry away - it filled width exactly but could let a near-square
-     sensor's computed height overflow past the box vertically, clipped
-     invisibly by overflow:hidden below, so no vertical white space ever
-     showed. min-width/min-height:0 here and on the container are what
-     actually prevent that overflow with object-fit, so contain is safe to
-     use again.) */
+  /* Peg the displayed width to the box and let height follow the sensor's
+     own aspect ratio (native replaced-element behavior for width:100% +
+     height:auto), instead of object-fit:contain, which picks whichever of
+     width/height is more constraining - that let extreme aspect-ratio
+     sensors compute a box bigger than the panel in some cases. Width-first
+     matches real camera sensors, which are typically wider than they are
+     tall (down to 1px-tall line-scan sensors) and rarely the reverse. */
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: contain;
+  height: auto;
   max-width: 100%;
-  max-height: 100%;
   min-width: 0;
   min-height: 0;
   image-rendering: auto;
@@ -291,41 +233,15 @@ html, body {
 /* --- Left column: Box 6, parameter controls --- */
 
 .params-column {
+  overflow-y: auto;
   min-height: 0;
 }
 
-/* Reset to Default needs to stay pinned on screen even once the parameter
-   list grows too tall to fit - so only .params-scroll-area (the groups)
-   scrolls; .reset-wrapper is a fixed-height sibling that never scrolls out
-   of view. */
 .panel-body-controls {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  gap: 14px;
-  padding: 14px 16px;
-}
-
-/* Camera Type is a fixed-height sibling above .params-scroll-area, mirroring
-   .reset-wrapper below it - it stays pinned in view (immovable) rather than
-   scrolling away with the rest of the parameter groups. Its own
-   .reset-divider marks where it ends and the scrollable groups begin, the
-   same way .reset-wrapper's divider marks where the scrollable groups end. */
-.sensor-type-wrapper {
-  flex: 0 0 auto;
-}
-
-.sensor-type-wrapper .reset-divider {
-  margin: 14px auto 0;
-}
-
-.params-scroll-area {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
   gap: 24px;
+  padding: 14px 16px;
 }
 
 .controls-group h3 {
@@ -337,90 +253,16 @@ html, body {
   margin: 0 0 10px 0;
 }
 
-/* Collapsible groups (Experimental/Camera Parameters): the h3 + a chevron
-   live inside a full-width, unstyled button instead of a bare heading, so
-   the whole row is clickable to collapse/expand. The chevron rotates -90deg
-   when collapsed (pointing right instead of down), and the content below
-   (.controls-list) is hidden via a class on the group rather than the
-   `hidden` attribute - .controls-list already sets its own `display: grid`,
-   which would fight a `[hidden]` rule at equal specificity (the same
-   footgun already hit once with .binning-select-row), so a plain descendant
-   selector sidesteps it entirely instead of needing another override. */
-.controls-group-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  margin: 0 0 10px 0;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-}
-
-.controls-group-header h3 {
-  margin: 0;
-}
-
-.controls-group-header .icon-chevron {
-  flex-shrink: 0;
-  color: #4b5563;
-  transition: transform 0.15s ease;
-}
-
-.collapsible-group.is-collapsed .controls-group-header .icon-chevron {
-  transform: rotate(-90deg);
-}
-
-.collapsible-group.is-collapsed .controls-list {
-  display: none;
-}
-
 .controls-list {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
 }
 
-/* Horizontal and Vertical binning are two small selects, not full-width
-   sliders - side by side makes better use of the row instead of leaving the
-   right half empty (see .binning-select-row below, used inside the
-   checkbox-gated Binning group in Camera Parameters). */
-.binning-select-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-/* The browser's built-in [hidden] rule (display: none) and this class's own
-   `display: grid` above have EQUAL selector specificity, so without this
-   override the author stylesheet rule wins and the row stays visible/
-   interactive even while its `hidden` IDL property is true - the exact same
-   footgun already fixed for .info-overlay above. This is why unchecking
-   Binning wasn't actually hiding (or disabling) the Horizontal/Vertical
-   selects: they looked and worked identically whether the checkbox was
-   ticked or not. */
-.binning-select-row[hidden] {
-  display: none;
-}
-
 .reset-wrapper {
-  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-/* Marks where the scrollable parameter list ends and the always-visible
-   Reset to Default button begins - a little wider than the button itself
-   (which is 88% via .btn-reset) rather than spanning the full panel width. */
-.reset-divider {
-  width: 92%;
-  height: 1px;
-  background: #d8dce3;
+  justify-content: center;
+  margin-top: 4px;
 }
 
 .btn-reset {
@@ -436,44 +278,6 @@ html, body {
   font-weight: 600;
   color: #33394a;
   margin-bottom: 3px;
-}
-
-/* EM Gain (CCD-only): a checkbox that reveals a normal param-control slider
-   (.em-gain-slider) directly below it once checked. */
-.em-gain-checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #33394a;
-  cursor: pointer;
-}
-
-.em-gain-checkbox-label input[type="checkbox"] {
-  margin: 0;
-}
-
-.em-gain-slider {
-  margin-top: 8px;
-}
-
-/* Binning: same checkbox-reveals-controls pattern as EM Gain above, but
-   applies to every camera type (not hidden/shown per sensor type) - checking
-   it reveals the Horizontal/Vertical selects (.binning-select-row) directly
-   below it. */
-.binning-checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #33394a;
-  cursor: pointer;
-}
-
-.binning-checkbox-label input[type="checkbox"] {
-  margin: 0;
 }
 
 .param-row {
@@ -683,15 +487,17 @@ html, body {
 
 .panel-header-plot {
   justify-content: flex-end;
+  padding: 6px 12px;
 }
 
-/* Shared by any plot panel header with TWO button groups instead of one -
-   e.g. the Histogram panel's Linear/Log toggle (left) + Export (right), or
-   the SNR panel's Compare (left) + Export (right) - space-between (the base
-   .panel-header behavior) instead of the flex-end used by panels that only
-   have a single Export button. */
-.panel-header-split {
+/* SNR panel's header has two groups: a placeholder Compare button (future
+   multi-camera comparison feature) on the left, and Export on the right -
+   space-between (the base .panel-header behavior) instead of the flex-end
+   used by the other three plot panels, which only have a single Export
+   button. */
+.snr-panel-header {
   justify-content: space-between;
+  padding: 6px 12px;
   flex-wrap: wrap;
   row-gap: 6px;
 }
@@ -734,20 +540,4 @@ html, body {
 .btn-primary.is-playing {
   background: #b3261e;
   border-color: #b3261e;
-}
-
-/* Icon-only buttons (the info "i"-in-a-circle icon on every panel header) -
-   combined with .btn/.btn-sm for the shared border/background/hover
-   treatment, but square and centered around the icon instead of padded for
-   text. */
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  line-height: 0;
-}
-
-.icon-info {
-  display: block;
 }

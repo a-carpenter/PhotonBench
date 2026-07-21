@@ -32,45 +32,80 @@ function computeDisplayRange(dataArray, maxValue) {
 }
 
 /**
- * Render one sensor frame (Float32Array of ADU values, row-major rows x
- * cols) into `canvas` using the given false-color LUT, scaled to [vmin,vmax].
- * The canvas's pixel buffer (canvas.width/height) is set to rows x cols so
- * one LUT lookup maps to exactly one physical pixel; CSS handles displayed
- * scaling (see style.css - image-rendering left to the browser default for
- * smooth resampling when the box is smaller than 1024x1024).
+ * Render one sensor frame into `canvas` using the given false-color LUT,
+ * scaled to [vmin,vmax]. The canvas's pixel buffer always stays at the
+ * sensor's NATIVE resolution (nativeRows x nativeCols) - the field of view
+ * the user set - regardless of binning, so the sensor's on-screen size never
+ * changes when the bin factors change (only the apparent pixel size does).
+ *
+ * `aduArray` holds one value per BINNED output pixel (binnedRows x
+ * binnedCols, row-major); each value is painted across its
+ * binHorizontal x binVertical block of native pixels ("super pixels"). If
+ * the native sensor size isn't an exact multiple of the bin factors, the
+ * leftover strip of native pixels beyond the last full bin (at most
+ * binFactor - 1 pixels wide, along the right and/or bottom edge) is drawn
+ * unilluminated (black) - those pixels were never part of a complete,
+ * readable bin, so they carry no signal.
+ *
+ * With binHorizontal = binVertical = 1, this reduces to one LUT lookup per
+ * native pixel, identical to the original unbinned behavior.
  */
-function renderSensorFrame(canvas, aduArray, rows, cols, lut, vmin, vmax) {
-  if (canvas.width !== cols) canvas.width = cols;
-  if (canvas.height !== rows) canvas.height = rows;
+function renderSensorFrame(canvas, aduArray, binnedRows, binnedCols, binHorizontal, binVertical, nativeRows, nativeCols, lut, vmin, vmax) {
+  if (canvas.width !== nativeCols) canvas.width = nativeCols;
+  if (canvas.height !== nativeRows) canvas.height = nativeRows;
 
   const ctx = canvas.getContext("2d");
-  const imageData = ctx.createImageData(cols, rows);
+  const imageData = ctx.createImageData(nativeCols, nativeRows);
   const pixels = imageData.data;
 
   const span = (vmax - vmin) || 1;
   const lutSize = lut.length / 3;
+  const activeRows = binnedRows * binVertical;
+  const activeCols = binnedCols * binHorizontal;
 
-  for (let i = 0; i < aduArray.length; i++) {
-    let t = (aduArray[i] - vmin) / span;
-    if (t < 0) t = 0;
-    else if (t > 1) t = 1;
+  for (let y = 0; y < nativeRows; y++) {
+    const rowBase = y * nativeCols;
+    const dead = y >= activeRows;
+    const by = dead ? 0 : Math.floor(y / binVertical);
 
-    const lutIdx = Math.min(lutSize - 1, Math.round(t * (lutSize - 1)));
-    const p = i * 4;
-    pixels[p + 0] = lut[lutIdx * 3 + 0];
-    pixels[p + 1] = lut[lutIdx * 3 + 1];
-    pixels[p + 2] = lut[lutIdx * 3 + 2];
-    pixels[p + 3] = 255;
+    for (let x = 0; x < nativeCols; x++) {
+      const p = (rowBase + x) * 4;
+
+      if (dead || x >= activeCols) {
+        pixels[p + 0] = 0;
+        pixels[p + 1] = 0;
+        pixels[p + 2] = 0;
+        pixels[p + 3] = 255;
+        continue;
+      }
+
+      const bx = Math.floor(x / binHorizontal);
+      let t = (aduArray[by * binnedCols + bx] - vmin) / span;
+      if (t < 0) t = 0;
+      else if (t > 1) t = 1;
+
+      const lutIdx = Math.min(lutSize - 1, Math.round(t * (lutSize - 1)));
+      pixels[p + 0] = lut[lutIdx * 3 + 0];
+      pixels[p + 1] = lut[lutIdx * 3 + 1];
+      pixels[p + 2] = lut[lutIdx * 3 + 2];
+      pixels[p + 3] = 255;
+    }
   }
 
   ctx.putImageData(imageData, 0, 0);
 }
 
 /**
- * Draw a dashed horizontal line across the sensor image at `row`, in the
- * given color, on top of whatever renderSensorFrame() just drew. Used to
- * show exactly which row Panel 3's line profile is plotting - same color as
- * that line-plot trace, so the two panels read as connected at a glance.
+ * Draw a dashed horizontal line across the sensor image at `row` (in NATIVE
+ * pixel coordinates), in the given color, on top of whatever
+ * renderSensorFrame() just drew. Used to show exactly which row Panel 3's
+ * line profile is plotting - same color as that line-plot trace, so the two
+ * panels read as connected at a glance.
+ *
+ * Since the canvas's pixel buffer always stays at the sensor's native
+ * resolution regardless of binning (see renderSensorFrame above), the line's
+ * on-screen size is already constant with a fixed thickness/dash - no
+ * bin-dependent compensation needed here.
  */
 function drawRowIndicatorLine(canvas, row, color) {
   const ctx = canvas.getContext("2d");

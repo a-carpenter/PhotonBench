@@ -40,20 +40,26 @@
 
   // --- Parameter state -------------------------------------------------
 
-  // Default values for every slider-backed parameter (bit depth is a
-  // discrete select and isn't part of the "Reset to Default" spec, so it's
-  // left out here and untouched by the reset button).
+  const DEFAULT_SENSOR_TYPE = "ccd";
+
+  // Per-camera-type defaults, keyed by the same ids as the Camera Type
+  // buttons. Photons is included here (even though it lives under
+  // Experimental Parameters, not Camera Parameters) since it's just as
+  // camera-type-dependent as the rest - a CCD and an InGaAs sensor are
+  // typically operated at very different illumination levels. Applied in
+  // full whenever a Camera Type button is clicked (see setSensorType()
+  // below); CCD's set doubles as what "Reset to Default" restores.
+  const SENSOR_TYPE_DEFAULTS = {
+    ccd: { photons: 20, qe: 0.95, darkCurrent: 0.00013, readNoise: 2.9, fullWell: 100000, offset: 100, gain: 1, pixelSize: 13, bitDepth: 16 },
+    scmos: { photons: 20, qe: 0.82, darkCurrent: 0.02, readNoise: 1.2, fullWell: 30000, offset: 100, gain: 1, pixelSize: 6.5, bitDepth: 16 },
+    ingaas: { photons: 100, qe: 0.7, darkCurrent: 365, readNoise: 23, fullWell: 1400000, offset: 100, gain: 1, pixelSize: 15, bitDepth: 14 },
+  };
+
+  // Default values for the two experimental parameters that are NOT
+  // camera-type-specific (Photons is - see SENSOR_TYPE_DEFAULTS above).
   const DEFAULT_PARAMS = {
-    photons: 20,
     exposureTime: 1.0,
     spotRadius: 300,
-    qe: 0.7,
-    darkCurrent: 0.1,
-    readNoise: 4.0,
-    fullWell: 30000,
-    offset: 100.0,
-    gain: 1.0,
-    pixelSize: 13.0,
   };
 
   const params = {
@@ -61,21 +67,60 @@
     sensorWidth: DEFAULT_SENSOR_WIDTH,
     sensorHeight: DEFAULT_SENSOR_HEIGHT,
     // Experimental
-    photons: DEFAULT_PARAMS.photons,
+    photons: SENSOR_TYPE_DEFAULTS[DEFAULT_SENSOR_TYPE].photons,
     exposureTime: DEFAULT_PARAMS.exposureTime,
     spotRadius: DEFAULT_PARAMS.spotRadius,
     // Camera
-    qe: DEFAULT_PARAMS.qe,
-    darkCurrent: DEFAULT_PARAMS.darkCurrent,
-    readNoise: DEFAULT_PARAMS.readNoise,
-    fullWell: DEFAULT_PARAMS.fullWell,
-    offset: DEFAULT_PARAMS.offset,
-    gain: DEFAULT_PARAMS.gain,
-    pixelSize: DEFAULT_PARAMS.pixelSize,
-    bitDepth: 12,
+    qe: SENSOR_TYPE_DEFAULTS[DEFAULT_SENSOR_TYPE].qe,
+    darkCurrent: SENSOR_TYPE_DEFAULTS[DEFAULT_SENSOR_TYPE].darkCurrent,
+    readNoise: SENSOR_TYPE_DEFAULTS[DEFAULT_SENSOR_TYPE].readNoise,
+    fullWell: SENSOR_TYPE_DEFAULTS[DEFAULT_SENSOR_TYPE].fullWell,
+    offset: SENSOR_TYPE_DEFAULTS[DEFAULT_SENSOR_TYPE].offset,
+    gain: SENSOR_TYPE_DEFAULTS[DEFAULT_SENSOR_TYPE].gain,
+    pixelSize: SENSOR_TYPE_DEFAULTS[DEFAULT_SENSOR_TYPE].pixelSize,
+    bitDepth: SENSOR_TYPE_DEFAULTS[DEFAULT_SENSOR_TYPE].bitDepth,
+    // EM Gain: CCD-only, off by default for every camera type (including on
+    // load and after Reset to Default) - see cameraParamsForPhysics() below.
+    emGainEnabled: false,
+    emGain: 1,
+    // Register Well Depth: CCD-only, used as the binned-charge clipping
+    // ceiling in place of Full Well Depth once binning combines more than
+    // one native pixel (see simulateBinnedFrame() in physics.js).
+    registerWellDepth: 400000,
+    // Binning: horizontal (column) and vertical (row) factors, independent
+    // of each other, off (1x1) by default for every camera type.
+    binHorizontal: 1,
+    binVertical: 1,
   };
 
-  function cameraParamsForPhysics() {
+  // EM Gain (CCD-only): when enabled, physics.js is handed an *effective* QE
+  // of (user's QE / 2) * EM Gain instead of the raw QE the user typed - the
+  // displayed QE control/value itself is never touched. Since QE only ever
+  // enters the pipeline at the "how many photoelectrons landed" step (the
+  // very first thing computed, in both the Monte Carlo frame simulation and
+  // the analytic SNR/noise curves), and everything downstream of that step
+  // (dark current, read noise, offset, full-well clip, ADU conversion) is
+  // completely unaware of QE, this one substitution is enough to get all of
+  // the requested behavior with no changes to physics.js itself:
+  //   - The photoelectron signal (photons x effective QE) is exactly what
+  //     gets multiplied by EM Gain, per spec.
+  //   - That multiplication necessarily happens before dark current/read
+  //     noise/offset are summed in, since those are separate terms added
+  //     afterward - satisfying "amplifying signal before read noise".
+  //   - Shot noise's formula is untouched (still sqrt(signal) / still a
+  //     Poisson draw on the mean signal) - it isn't a new/added noise term,
+  //     it's the exact same calculation as always, just fed a bigger input.
+  // Simplifications worth flagging: dark-current electrons are NOT
+  // multiplied by EM Gain (the spec calls out only the photon-derived
+  // signal), and real EMCCDs have an extra ~1.4x "excess noise factor" from
+  // the stochastic multiplication process that this deliberately omits
+  // (matching "keep shot noise the same").
+  // The raw, unmodified per-pixel physics params - no EM Gain substitution.
+  // Used as the "Single Pixel SNR" baseline on the SNR panel (see
+  // updateStaticPanels below) so there's always a true, modifier-free
+  // reference curve to compare against, regardless of what EM Gain/Binning
+  // are currently set to.
+  function rawParamsForPhysics() {
     return {
       exposureTime: params.exposureTime,
       qe: params.qe,
@@ -83,9 +128,17 @@
       readNoise: params.readNoise,
       offset: params.offset,
       fullWell: params.fullWell,
+      registerWellDepth: params.registerWellDepth,
       gain: params.gain,
       bitDepth: params.bitDepth,
     };
+  }
+
+  function cameraParamsForPhysics() {
+    const emGainActive = sensorType === "ccd" && params.emGainEnabled;
+    const raw = rawParamsForPhysics();
+    if (!emGainActive) return raw;
+    return Object.assign({}, raw, { qe: (params.qe / 2) * params.emGain });
   }
 
   // --- Build Box 6 controls ---------------------------------------------
@@ -143,16 +196,241 @@
     cameraContainer.appendChild(control.element);
   }
 
+  // --- Register Well Depth (CCD-only camera parameter) --------------------
+  // The charge-summing register's capacity, used in place of the per-pixel
+  // Full Well Depth as the clipping ceiling once binning combines more than
+  // one native pixel's charge together (see simulateBinnedFrame() in
+  // physics.js). Bounds mirror Full Well Depth's own [1,000, 200,000,000]
+  // range, scaled up 4x (a bin register is built to hold more charge than
+  // any single native pixel could) - default 400,000 = 4x the CCD Full Well
+  // Depth default. Hidden entirely for sCMOS/InGaAs, and reset to its
+  // default every time a camera type is (re)selected, including Reset to
+  // Default - same treatment as EM Gain below.
+  //
+  // Inserted directly below Full Well Depth (and above Offset) rather than
+  // appended at the end, since it's conceptually the same kind of
+  // "capacity" parameter and reads better sitting right next to it.
+
+  const REGISTER_WELL_DEPTH_MIN = 1000;
+  const REGISTER_WELL_DEPTH_MAX = 800000000;
+  const REGISTER_WELL_DEPTH_DEFAULT = 400000;
+
+  const registerWellDepthControl = Controls.createParamControl({
+    id: "register-well-depth", label: "Register Well Depth", unit: "e-",
+    min: REGISTER_WELL_DEPTH_MIN, max: REGISTER_WELL_DEPTH_MAX, scale: "log",
+    value: REGISTER_WELL_DEPTH_DEFAULT,
+    onChange: (v) => onAnyParamChange("registerWellDepth", v),
+  });
+  registerWellDepthControl.element.classList.add("register-well-depth-control");
+  cameraContainer.insertBefore(registerWellDepthControl.element, controlsByKey["offset"].element);
+
   const bitDepthControl = Controls.createSelectControl({
     id: "bit-depth", label: "Bit Depth", options: [8, 10, 12, 14, 16], value: params.bitDepth,
     onChange: (v) => onAnyParamChange("bitDepth", v),
   });
   cameraContainer.appendChild(bitDepthControl.element);
 
+  // --- Binning (checkbox-gated, in Camera Parameters - like EM Gain) ------
+  // Horizontal (column) and vertical (row) bin factors, independent of each
+  // other. Only 1/2/4/8 are offered right now, but the value itself is a
+  // plain integer, not a hardcoded power-of-two enum - vertical binning is
+  // expected to later grow into an arbitrary factor (up to the full sensor
+  // height) for a spectroscopy mode, and nothing here needs to change for
+  // that.
+  //
+  // Binning never changes the sensor's width/height - the field of view the
+  // user set is exactly what's simulated and displayed. Instead, binning
+  // changes how big the "super pixels" look: Physics.simulateBinnedFrame()
+  // combines binHorizontal x binVertical native pixels into one output value
+  // (the CCD "charge"/sCMOS-InGaAs "digital" split), and
+  // CanvasR.renderSensorFrame() paints that value across the corresponding
+  // binH x binV block of NATIVE pixels on a canvas that always stays at the
+  // sensor's native width x height. If the sensor size isn't an exact
+  // multiple of the bin factor, the leftover strip of native pixels at the
+  // right/bottom edge (at most binFactor - 1 pixels wide) is drawn
+  // unilluminated (dead/black) and excluded from the histogram/line-profile
+  // stats, since it was never actually part of a complete, readable bin.
+  //
+  // Unlike EM Gain, Binning applies to every camera type - it's never
+  // hidden by applySensorTypeDefaults(). A checkbox reveals the
+  // Horizontal/Vertical selects when checked; unchecking resets both back
+  // to 1x1. Resizing the sensor (Box 1's W/H inputs, see onSensorDimsChange
+  // below) also resets bin factors to 1x1 AND unchecks this box, so a dead
+  // strip only ever shows up as the direct result of a bin factor picked for
+  // the sensor size currently on screen - never as a stale mismatch left
+  // over from an earlier resize, and the checkbox never looks "on" while
+  // doing nothing.
+  //
+  // Appended directly below Bit Depth, for every camera type.
+
+  const BINNING_OPTIONS = [1, 2, 4, 8];
+
+  const binningGroup = document.createElement("div");
+  binningGroup.className = "param-control binning-control";
+  binningGroup.id = "binning-group";
+
+  const binningCheckboxLabel = document.createElement("label");
+  binningCheckboxLabel.className = "binning-checkbox-label";
+  const binningCheckbox = document.createElement("input");
+  binningCheckbox.type = "checkbox";
+  binningCheckbox.id = "binning-checkbox";
+  binningCheckboxLabel.appendChild(binningCheckbox);
+  binningCheckboxLabel.appendChild(document.createTextNode(" Binning"));
+  binningGroup.appendChild(binningCheckboxLabel);
+
+  const binningSelectRow = document.createElement("div");
+  binningSelectRow.className = "binning-select-row";
+  binningSelectRow.hidden = true;
+
+  const horizontalBinControl = Controls.createSelectControl({
+    id: "bin-horizontal", label: "Horizontal", options: BINNING_OPTIONS, value: params.binHorizontal,
+    onChange: (v) => {
+      params.binHorizontal = v;
+      refreshDisplayRanges();
+      drawLiveFrame();
+      updateStaticPanels();
+    },
+  });
+  binningSelectRow.appendChild(horizontalBinControl.element);
+
+  const verticalBinControl = Controls.createSelectControl({
+    id: "bin-vertical", label: "Vertical", options: BINNING_OPTIONS, value: params.binVertical,
+    onChange: (v) => {
+      params.binVertical = v;
+      refreshDisplayRanges();
+      drawLiveFrame();
+      updateStaticPanels();
+    },
+  });
+  binningSelectRow.appendChild(verticalBinControl.element);
+
+  binningGroup.appendChild(binningSelectRow);
+  cameraContainer.appendChild(binningGroup);
+
+  function setBinningEnabled(enabled) {
+    binningCheckbox.checked = enabled;
+    binningSelectRow.hidden = !enabled;
+    if (!enabled) {
+      params.binHorizontal = 1;
+      params.binVertical = 1;
+      horizontalBinControl.setValue(1);
+      verticalBinControl.setValue(1);
+    }
+  }
+
+  binningCheckbox.addEventListener("change", () => {
+    setBinningEnabled(binningCheckbox.checked);
+    refreshDisplayRanges();
+    drawLiveFrame();
+    updateStaticPanels();
+  });
+
+  // --- EM Gain (CCD-only camera parameter) --------------------------------
+  // A checkbox; checking it reveals an integer 1-1000 slider and switches on
+  // the effective-QE substitution in cameraParamsForPhysics() above. Hidden
+  // entirely for sCMOS/InGaAs (see applySensorTypeDefaults below), and reset
+  // to off/1 every time a camera type is (re)selected, including Reset to
+  // Default. Appended last so it always renders at the very bottom of the
+  // Camera Parameters list for CCD.
+
+  const EM_GAIN_MIN = 1;
+  const EM_GAIN_MAX = 1000;
+  const EM_GAIN_DEFAULT = 1;
+
+  const emGainGroup = document.createElement("div");
+  emGainGroup.className = "param-control em-gain-control";
+  emGainGroup.id = "em-gain-group";
+
+  const emGainCheckboxLabel = document.createElement("label");
+  emGainCheckboxLabel.className = "em-gain-checkbox-label";
+  const emGainCheckbox = document.createElement("input");
+  emGainCheckbox.type = "checkbox";
+  emGainCheckbox.id = "em-gain-checkbox";
+  emGainCheckboxLabel.appendChild(emGainCheckbox);
+  emGainCheckboxLabel.appendChild(document.createTextNode(" Enable EM Gain"));
+  emGainGroup.appendChild(emGainCheckboxLabel);
+
+  const emGainSliderControl = Controls.createParamControl({
+    id: "em-gain", label: "EM Gain", min: EM_GAIN_MIN, max: EM_GAIN_MAX,
+    value: EM_GAIN_DEFAULT, scale: "linear", step: 1,
+    onChange: (v) => onAnyParamChange("emGain", Math.round(v)),
+  });
+  emGainSliderControl.element.hidden = true;
+  emGainSliderControl.element.classList.add("em-gain-slider");
+  emGainGroup.appendChild(emGainSliderControl.element);
+  cameraContainer.appendChild(emGainGroup);
+
+  emGainCheckbox.addEventListener("change", () => {
+    params.emGainEnabled = emGainCheckbox.checked;
+    emGainSliderControl.element.hidden = !emGainCheckbox.checked;
+    refreshDisplayRanges();
+    drawLiveFrame();
+    updateStaticPanels();
+  });
+
+  // --- Camera Type (Box 6, above Experimental Parameters) -----------------
+  // Clicking a button highlights it and immediately loads that camera's
+  // full set of defaults (SENSOR_TYPE_DEFAULTS above) into every affected
+  // slider/number control and params. CCD is selected and loaded on start
+  // and whenever Reset to Default is clicked.
+
+  const sensorTypeButtons = {
+    ccd: document.getElementById("sensor-type-ccd-btn"),
+    scmos: document.getElementById("sensor-type-scmos-btn"),
+    ingaas: document.getElementById("sensor-type-ingaas-btn"),
+  };
+  let sensorType = DEFAULT_SENSOR_TYPE;
+
+  function applySensorTypeDefaults(type) {
+    const defaults = SENSOR_TYPE_DEFAULTS[type];
+    for (const key of Object.keys(defaults)) {
+      if (key === "bitDepth") continue; // discrete select control, handled separately below
+      params[key] = defaults[key];
+      const control = controlsByKey[key];
+      if (control) control.setValue(defaults[key]);
+    }
+    params.bitDepth = defaults.bitDepth;
+    bitDepthControl.setValue(defaults.bitDepth);
+
+    // EM Gain is CCD-only: shown only for that type, and always reset to
+    // off/1 on every camera-type switch (including re-selecting CCD, and
+    // Reset to Default) rather than carried over between types.
+    emGainGroup.hidden = type !== "ccd";
+    params.emGainEnabled = false;
+    params.emGain = EM_GAIN_DEFAULT;
+    emGainCheckbox.checked = false;
+    emGainSliderControl.setValue(EM_GAIN_DEFAULT);
+    emGainSliderControl.element.hidden = true;
+
+    // Register Well Depth is CCD-only, same treatment as EM Gain: shown only
+    // for that type, and always reset to its default on every camera-type
+    // switch (including re-selecting CCD, and Reset to Default).
+    registerWellDepthControl.element.hidden = type !== "ccd";
+    params.registerWellDepth = REGISTER_WELL_DEPTH_DEFAULT;
+    registerWellDepthControl.setValue(REGISTER_WELL_DEPTH_DEFAULT);
+
+    refreshDisplayRanges();
+    drawLiveFrame();
+    updateStaticPanels();
+  }
+
+  function setSensorType(type) {
+    sensorType = type;
+    for (const [key, btn] of Object.entries(sensorTypeButtons)) {
+      btn.classList.toggle("is-active", key === type);
+    }
+    applySensorTypeDefaults(type);
+  }
+
+  for (const [key, btn] of Object.entries(sensorTypeButtons)) {
+    btn.addEventListener("click", () => setSensorType(key));
+  }
+
   // --- Reset to Default ---------------------------------------------------
 
   const resetDefaultsBtn = document.getElementById("reset-defaults-btn");
   resetDefaultsBtn.addEventListener("click", () => {
+    // Non-camera-type-specific experimental params.
     for (const key of Object.keys(DEFAULT_PARAMS)) {
       params[key] = DEFAULT_PARAMS[key];
       const control = controlsByKey[key];
@@ -164,9 +442,12 @@
     params.sensorHeight = DEFAULT_SENSOR_HEIGHT;
     sensorWidthInput.value = DEFAULT_SENSOR_WIDTH;
     sensorHeightInput.value = DEFAULT_SENSOR_HEIGHT;
-    refreshDisplayRanges();
-    drawLiveFrame();
-    updateStaticPanels();
+    // Binning also lives outside the slider-backed controls loop above.
+    setBinningEnabled(false);
+    // CCD + its full defaults (Photons, QE, Dark Current, Read Noise, Full
+    // Well Depth, Offset, Gain, Pixel Size, Bit Depth); this also triggers
+    // the refresh/redraw, so it's called last.
+    setSensorType(DEFAULT_SENSOR_TYPE);
   });
 
   // --- Panels 1-3: live sensor image, histogram, line profile ------------
@@ -190,11 +471,64 @@
   // Play tick that might fire mid-export).
   let lastFrame = { histCenters: [], histCounts: [], rowData: new Float32Array(0) };
 
+  // --- Histogram Linear/Log y-axis toggle (Panel 2 header) -----------------
+  // A display preference, not a simulation parameter - like the Comparison
+  // panel's legend-collapse toggle, it's not reset by Reset to Default.
+  // Defaults to linear: the long tail of anti-aliased edge pixels between
+  // the signal and background peaks (see makeCircularIllumination) is a tiny
+  // population that a log axis exaggerates into a prominent staircase; on
+  // linear it reads as the vanishingly small population it actually is.
+  const histogramScaleToggleBtn = document.getElementById("histogram-scale-toggle-btn");
+  let histogramYAxisType = "linear";
+
+  function updateHistogramScaleToggleLabel() {
+    // Follows the same convention as the Play/Pause button: the label names
+    // the ACTION a click will take (i.e. the axis type you'd switch TO),
+    // not the currently-active one.
+    const label = histogramYAxisType === "linear"
+      ? "Switch histogram to log y-axis"
+      : "Switch histogram to linear y-axis";
+    // Spelling out "Change to" avoids the confusing appearance of a button
+    // reading just "Log" while a linear plot is already on screen (looks
+    // like a state label rather than an action) - it should read
+    // unambiguously as something to click.
+    histogramScaleToggleBtn.textContent = histogramYAxisType === "linear" ? "Change to Log" : "Change to Linear";
+    histogramScaleToggleBtn.setAttribute("aria-label", label);
+    histogramScaleToggleBtn.title = label;
+  }
+  updateHistogramScaleToggleLabel();
+
+  histogramScaleToggleBtn.addEventListener("click", () => {
+    histogramYAxisType = histogramYAxisType === "linear" ? "log" : "linear";
+    updateHistogramScaleToggleLabel();
+    // Redraws the SAME already-computed bin centers/counts under the new
+    // scale - no need to resimulate a frame just to flip the axis type.
+    Charts.renderHistogramChart("histogram-chart", {
+      centers: lastFrame.histCenters,
+      counts: lastFrame.histCounts,
+      vmin: cachedRange.vmin,
+      vmax: cachedRange.vmax,
+      yMax: cachedHistYMax,
+      yAxisType: histogramYAxisType,
+    });
+  });
+
+  // Binning readout mode: CCD combines charge on-chip before the single
+  // read-noise draw ("charge"); sCMOS/InGaAs read each native pixel out
+  // independently and sum digitally afterward ("digital"). See
+  // Physics.simulateBinnedFrame() in physics.js for the full explanation.
+  function currentBinningMode() {
+    return sensorType === "ccd" ? "charge" : "digital";
+  }
+
   function refreshDisplayRanges() {
     const photonMap = Physics.makeCircularIllumination(
       params.sensorHeight, params.sensorWidth, params.photons, params.spotRadius
     );
-    const { adu } = Physics.simulateSensor(photonMap, cameraParamsForPhysics());
+    const { adu } = Physics.simulateBinnedFrame(
+      photonMap, params.sensorHeight, params.sensorWidth, cameraParamsForPhysics(),
+      params.binHorizontal, params.binVertical, currentBinningMode()
+    );
     const maxAdu = Math.pow(2, params.bitDepth) - 1;
     cachedRange = CanvasR.computeDisplayRange(adu, maxAdu);
 
@@ -212,28 +546,42 @@
   }
 
   function drawLiveFrame() {
-    const middleRow = Math.floor(params.sensorHeight / 2);
     const photonMap = Physics.makeCircularIllumination(
       params.sensorHeight, params.sensorWidth, params.photons, params.spotRadius
     );
-    const { adu } = Physics.simulateSensor(photonMap, cameraParamsForPhysics());
+    const { adu, binnedRows, binnedCols } = Physics.simulateBinnedFrame(
+      photonMap, params.sensorHeight, params.sensorWidth, cameraParamsForPhysics(),
+      params.binHorizontal, params.binVertical, currentBinningMode()
+    );
     const { vmin, vmax } = cachedRange;
 
-    CanvasR.renderSensorFrame(sensorCanvas, adu, params.sensorHeight, params.sensorWidth, lut, vmin, vmax);
-    CanvasR.drawRowIndicatorLine(sensorCanvas, middleRow, LINE_PROFILE_ROW_COLOR);
+    CanvasR.renderSensorFrame(
+      sensorCanvas, adu, binnedRows, binnedCols, params.binHorizontal, params.binVertical,
+      params.sensorHeight, params.sensorWidth, lut, vmin, vmax
+    );
+
+    // The indicator line/line-profile both key off the same BINNED middle
+    // row; the line itself is drawn in NATIVE canvas coordinates (the canvas
+    // always stays at native resolution - see renderSensorFrame above), so
+    // its native row is that binned row's block, centered within the block.
+    const binnedMiddleRow = Math.floor(binnedRows / 2);
+    const nativeIndicatorRow = binnedMiddleRow * params.binVertical + Math.floor(params.binVertical / 2);
+    CanvasR.drawRowIndicatorLine(sensorCanvas, nativeIndicatorRow, LINE_PROFILE_ROW_COLOR);
 
     const { centers, counts } = Charts.updateHistogramChart("histogram-chart", {
-      adu, bins: 80, vmin, vmax, yMax: cachedHistYMax,
+      adu, bins: 80, vmin, vmax, yMax: cachedHistYMax, yAxisType: histogramYAxisType,
     });
 
-    const rowData = adu.subarray(middleRow * params.sensorWidth, (middleRow + 1) * params.sensorWidth);
+    const rowData = adu.subarray(binnedMiddleRow * binnedCols, (binnedMiddleRow + 1) * binnedCols);
 
-    // The illuminated ("signal") portion of this row: since illumination is a
-    // disc centered on the sensor and the middle row passes through that
-    // center, the lit segment spans [centerCol - radius, centerCol + radius].
-    const centerCol = Math.floor(params.sensorWidth / 2);
-    const colStart = Math.max(0, Math.round(centerCol - params.spotRadius));
-    const colEnd = Math.min(params.sensorWidth - 1, Math.round(centerCol + params.spotRadius));
+    // The illuminated ("signal") portion of this row, in BINNED-pixel
+    // coordinates: the illumination disc is defined in native-pixel space
+    // (see makeCircularIllumination above), so its radius is scaled down by
+    // the horizontal bin factor to land on the corresponding binned columns.
+    const centerCol = Math.floor(binnedCols / 2);
+    const binnedRadius = params.spotRadius / params.binHorizontal;
+    const colStart = Math.max(0, Math.round(centerCol - binnedRadius));
+    const colEnd = Math.min(binnedCols - 1, Math.round(centerCol + binnedRadius));
     let signalMean;
     if (colEnd > colStart) {
       let sum = 0;
@@ -253,11 +601,62 @@
   // the same illumination) will instead be applied later, at the point
   // where a curve is stored via the "Compare" button for the future Camera
   // Sensitivity Comparison feature - not on every live update here.
+  //
+  // The Noise Contributions panel (5) and the underlying per-pixel sweep
+  // stay exactly as before - unaffected by binning, per the earlier decision
+  // that those describe per-pixel sensor characteristics. What's new here is
+  // the SNR panel (4) itself: whenever EM Gain and/or Binning are active, it
+  // now shows TWO curves instead of one, so you can see the effect you're
+  // configuring against an unmodified reference:
+  //   - "Single Pixel SNR" (dashed): the true, unmodified single-pixel
+  //     curve - raw QE, no EM Gain, no binning - via rawParamsForPhysics().
+  //     Always the same regardless of EM Gain/Binning settings.
+  //   - "Binned SNR" (solid): the actual current-settings curve. EM Gain
+  //     (CCD-only) is folded in via cameraParamsForPhysics()'s existing
+  //     effective-QE substitution (unchanged from before); binning is then
+  //     layered on top via combineForBinning() below.
+  // When neither EM Gain nor Binning is active, the two curves are
+  // identical, so only the single (solid) curve is drawn - visually
+  // unchanged from before this feature existed.
 
-  let lastStaticData = { photonRange: [], snr: [], noiseShot: [], noiseDark: [], noiseRead: [], noiseTotal: [] };
+  // Combines n native pixels' worth of per-pixel signal/noise components
+  // into one binned point, following the same two readout models as
+  // Physics.simulateBinnedFrame() in physics.js:
+  //   - "charge" (CCD): signal sums n-fold; shot/dark noise (each summed
+  //     from n independent Poisson draws) grow by sqrt(n); read noise is a
+  //     SINGLE draw per bin, so it does NOT scale with n at all.
+  //   - "digital" (sCMOS/InGaAs): every term - shot, dark, AND read - scales
+  //     by sqrt(n) uniformly (n independent full reads summed), which is
+  //     algebraically identical to just multiplying the single-pixel SNR by
+  //     sqrt(n).
+  // With n = 1 both branches reduce exactly to the unbinned single-pixel
+  // values, so this is safe to call unconditionally.
+  function combineForBinning(signalArr, shotArr, darkArr, readArr, n, mode) {
+    const len = signalArr.length;
+    const signal = new Array(len);
+    const snr = new Array(len);
+    for (let i = 0; i < len; i++) {
+      const s = n * signalArr[i];
+      let noiseTotal;
+      if (mode === "charge") {
+        noiseTotal = Math.sqrt(n * shotArr[i] * shotArr[i] + n * darkArr[i] * darkArr[i] + readArr[i] * readArr[i]);
+      } else {
+        const singleNoiseTotal = Math.sqrt(shotArr[i] * shotArr[i] + darkArr[i] * darkArr[i] + readArr[i] * readArr[i]);
+        noiseTotal = Math.sqrt(n) * singleNoiseTotal;
+      }
+      signal[i] = s;
+      snr[i] = noiseTotal > 0 ? s / noiseTotal : 0;
+    }
+    return { signal, snr };
+  }
+
+  let lastStaticData = {
+    photonRange: [], snr: [], activeSnr: [], modifierActive: false,
+    noiseShot: [], noiseDark: [], noiseRead: [], noiseTotal: [],
+  };
 
   function updateStaticPanels() {
-    const camParams = cameraParamsForPhysics();
+    const camParams = cameraParamsForPhysics(); // raw, or EM-Gain-effective if active
     const photonMax = Math.max((params.fullWell / Math.max(params.qe, 1e-6)) * 2, 10);
     const nPoints = 200;
     const logMin = 0;
@@ -268,18 +667,35 @@
     }
 
     const stats = Physics.analyticNoise(photonRange, camParams);
+
+    const n = params.binHorizontal * params.binVertical;
+    const mode = currentBinningMode();
+    const modifierActive = (sensorType === "ccd" && params.emGainEnabled) || n > 1;
+
+    // "Single Pixel SNR": the true, unmodified baseline - raw QE, no EM
+    // Gain, no binning - computed fresh only when it can actually differ
+    // from the effective curve above (i.e. only when EM Gain is active;
+    // when it's not, camParams === raw params already, so reusing `stats`
+    // avoids a redundant analyticNoise call).
+    const baselineStats = (sensorType === "ccd" && params.emGainEnabled)
+      ? Physics.analyticNoise(photonRange, rawParamsForPhysics())
+      : stats;
     const snr = new Array(nPoints);
     for (let i = 0; i < nPoints; i++) {
-      snr[i] = stats.noise_total[i] > 0 ? stats.signal_e[i] / stats.noise_total[i] : 0;
+      snr[i] = baselineStats.noise_total[i] > 0 ? baselineStats.signal_e[i] / baselineStats.noise_total[i] : 0;
     }
 
+    // "Binned SNR": the actual current-settings curve - effective (EM
+    // Gain-applied) per-pixel stats, combined across the active bin.
+    const activeSnr = combineForBinning(stats.signal_e, stats.noise_shot, stats.noise_dark, stats.noise_read, n, mode).snr;
+
     const currentStats = Physics.analyticNoise([params.photons], camParams);
-    const currentSNR = currentStats.noise_total[0] > 0
-      ? currentStats.signal_e[0] / currentStats.noise_total[0]
-      : 0;
+    const currentSNR = combineForBinning(
+      currentStats.signal_e, currentStats.noise_shot, currentStats.noise_dark, currentStats.noise_read, n, mode
+    ).snr[0];
 
     Charts.updateSNRChart("snr-chart", {
-      photonRange, snr, currentPhotons: params.photons, currentSNR,
+      photonRange, baselineSnr: snr, activeSnr, modifierActive, currentPhotons: params.photons, currentSNR,
     });
 
     Charts.updateNoiseChart("noise-chart", {
@@ -294,6 +710,8 @@
     lastStaticData = {
       photonRange,
       snr,
+      activeSnr,
+      modifierActive,
       noiseShot: Array.from(stats.noise_shot),
       noiseDark: Array.from(stats.noise_dark),
       noiseRead: Array.from(stats.noise_read),
@@ -430,16 +848,28 @@
     const ratio = (params.pixelSize * params.pixelSize) / (COMPARISON_REFERENCE_PIXEL_SIZE_UM * COMPARISON_REFERENCE_PIXEL_SIZE_UM);
     const color = COMPARISON_PALETTE[comparisonIdCounter % COMPARISON_PALETTE.length];
 
+    // Save whichever curve is currently ACTIVE on the SNR panel - the
+    // current-settings curve (with EM Gain/Binning folded in) when either is
+    // on, or the plain single-pixel curve when neither is active (the two
+    // are identical in that case anyway). This is what the user is actually
+    // configuring and wants to compare against other cameras; the unbinned
+    // case is trivial for them to add separately if they want it too.
+    const activeSnr = lastStaticData.modifierActive ? lastStaticData.activeSnr : lastStaticData.snr;
+
     comparisonTraces.push({
       id: comparisonIdCounter++,
       name,
       color,
       photonRange: lastStaticData.photonRange.slice(),
-      snr: lastStaticData.snr.slice(),
-      snrNormalized: lastStaticData.snr.map((v) => v * ratio),
+      snr: activeSnr.slice(),
+      snrNormalized: activeSnr.map((v) => v * ratio),
     });
 
     renderComparisonCharts();
+  });
+
+  document.getElementById("export-comparison-btn").addEventListener("click", () => {
+    Exporters.exportComparison({ comparisonTraces });
   });
 
   renderComparisonCharts();
@@ -464,6 +894,11 @@
     params.sensorHeight = clampSensorDim(sensorHeightInput.value, SENSOR_HEIGHT_MIN, SENSOR_HEIGHT_MAX, params.sensorHeight);
     sensorWidthInput.value = params.sensorWidth;
     sensorHeightInput.value = params.sensorHeight;
+    // Resizing the sensor always resets binning back to 1x1 (and unchecks
+    // the Binning checkbox - see the Binning section above) rather than
+    // re-snapping the new size to whatever bin factors happened to be
+    // active before.
+    setBinningEnabled(false);
     refreshDisplayRanges();
     drawLiveFrame();
   }
@@ -493,62 +928,82 @@
 
   playPauseBtn.addEventListener("click", () => setPlaying(!isPlaying));
 
-  // --- Info overlay (header button) ---------------------------------------
+  // --- Info overlays (header + one per panel, all icon-only "i" buttons) --
+  // Every Info button follows the same open/close/backdrop-click/Escape
+  // wiring, so it's factored into one helper instead of repeating it per
+  // overlay. Returns {open, close} in case a caller needs to trigger the
+  // overlay itself (the header's does, to load its content asynchronously).
+  function setupInfoOverlay(btnId, overlayId, closeBtnId) {
+    const btn = document.getElementById(btnId);
+    const overlay = document.getElementById(overlayId);
+    const closeBtn = document.getElementById(closeBtnId);
 
-  const infoBtn = document.getElementById("info-btn");
-  const infoOverlay = document.getElementById("info-overlay");
+    function open() {
+      overlay.hidden = false;
+    }
+    function close() {
+      overlay.hidden = true;
+    }
+
+    btn.addEventListener("click", open);
+    closeBtn.addEventListener("click", close);
+
+    // Clicking the dimmed backdrop (not the modal box itself) closes it too.
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close();
+    });
+
+    // Escape closes the overlay whenever it's open.
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !overlay.hidden) close();
+    });
+
+    return { open, close };
+  }
+
+  // Header Info: content is loaded asynchronously from README.md (see
+  // info.js), unlike every other overlay below, which has its content
+  // written directly into the HTML.
+  setupInfoOverlay("info-btn", "info-overlay", "info-close-btn");
   const infoModalContent = document.getElementById("info-modal-content");
-  const infoCloseBtn = document.getElementById("info-close-btn");
-
   Info.loadInfoText().then((html) => {
     infoModalContent.innerHTML = html;
   });
 
-  function openInfoOverlay() {
-    infoOverlay.hidden = false;
+  // Comparison panel Info: explains the Normalized SNR plot.
+  setupInfoOverlay("comparison-info-btn", "comparison-info-overlay", "comparison-info-close-btn");
+
+  // One Info overlay per Box 1-5 panel header, content to be filled in later
+  // (each currently shows placeholder text - see index.html).
+  setupInfoOverlay("panel-1-info-btn", "panel-1-info-overlay", "panel-1-info-close-btn");
+  setupInfoOverlay("panel-2-info-btn", "panel-2-info-overlay", "panel-2-info-close-btn");
+  setupInfoOverlay("panel-3-info-btn", "panel-3-info-overlay", "panel-3-info-close-btn");
+  setupInfoOverlay("panel-4-info-btn", "panel-4-info-overlay", "panel-4-info-close-btn");
+  setupInfoOverlay("panel-5-info-btn", "panel-5-info-overlay", "panel-5-info-close-btn");
+  setupInfoOverlay("panel-6-info-btn", "panel-6-info-overlay", "panel-6-info-close-btn");
+
+  // --- Collapsible parameter groups (Experimental/Camera Parameters) ------
+  // Clicking the group's header row (chevron + h3) toggles a `.is-collapsed`
+  // class on the group, which hides its .controls-list via CSS (see
+  // style.css - deliberately NOT the `hidden` attribute, since
+  // .controls-list already sets its own `display: grid`). Starts expanded,
+  // same as every other collapse/toggle control in this app.
+  function setupCollapsibleGroup(groupId, toggleBtnId) {
+    const group = document.getElementById(groupId);
+    const toggleBtn = document.getElementById(toggleBtnId);
+    let collapsed = false;
+
+    function setCollapsed(next) {
+      collapsed = next;
+      group.classList.toggle("is-collapsed", collapsed);
+      toggleBtn.setAttribute("aria-expanded", String(!collapsed));
+    }
+
+    toggleBtn.addEventListener("click", () => setCollapsed(!collapsed));
   }
 
-  function closeInfoOverlay() {
-    infoOverlay.hidden = true;
-  }
-
-  infoBtn.addEventListener("click", openInfoOverlay);
-  infoCloseBtn.addEventListener("click", closeInfoOverlay);
-
-  // Clicking the dimmed backdrop (not the modal box itself) closes it too.
-  infoOverlay.addEventListener("click", (e) => {
-    if (e.target === infoOverlay) closeInfoOverlay();
-  });
-
-  // Escape closes the overlay whenever it's open.
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !infoOverlay.hidden) closeInfoOverlay();
-  });
-
-  // --- Comparison panel Info overlay (explains the Normalized SNR plot) ---
-
-  const comparisonInfoBtn = document.getElementById("comparison-info-btn");
-  const comparisonInfoOverlay = document.getElementById("comparison-info-overlay");
-  const comparisonInfoCloseBtn = document.getElementById("comparison-info-close-btn");
-
-  function openComparisonInfoOverlay() {
-    comparisonInfoOverlay.hidden = false;
-  }
-
-  function closeComparisonInfoOverlay() {
-    comparisonInfoOverlay.hidden = true;
-  }
-
-  comparisonInfoBtn.addEventListener("click", openComparisonInfoOverlay);
-  comparisonInfoCloseBtn.addEventListener("click", closeComparisonInfoOverlay);
-
-  comparisonInfoOverlay.addEventListener("click", (e) => {
-    if (e.target === comparisonInfoOverlay) closeComparisonInfoOverlay();
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !comparisonInfoOverlay.hidden) closeComparisonInfoOverlay();
-  });
+  setupCollapsibleGroup("experimental-group", "experimental-group-toggle");
+  setupCollapsibleGroup("camera-group", "camera-group-toggle");
 
   // --- Export All button (Box 1) ----------------------------------------
 

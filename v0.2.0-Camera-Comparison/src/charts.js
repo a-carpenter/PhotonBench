@@ -48,39 +48,13 @@ function initHistogramChart(divId) {
     mergeLayout({
       title: { text: "Intensity Histogram", font: { size: 13 } },
       xaxis: boxedAxis({ title: "Calculated ADU" }),
-      yaxis: boxedAxis({ title: "Pixel Count", type: "linear" }),
+      yaxis: boxedAxis({ title: "Pixel Count", type: "log" }),
     }),
     PLOTLY_CONFIG
   );
 }
 
-/**
- * (Re)draws the histogram from already-computed bin centers/counts, without
- * rebinning - used both by updateHistogramChart() below (which does the
- * binning) and directly by main.js's Linear/Log toggle button, which only
- * needs to redraw the SAME data under a different y-axis scale rather than
- * resimulating a frame.
- */
-function renderHistogramChart(divId, { centers, counts, vmin, vmax, yMax, yAxisType = "linear" }) {
-  const yAxis = boxedAxis({ title: "Pixel Count", type: yAxisType });
-  if (yMax !== undefined) {
-    // Log-axis ranges are specified in log10 units; linear ranges are not.
-    yAxis.range = yAxisType === "log" ? [0, Math.log10(Math.max(yMax, 1))] : [0, yMax];
-  }
-
-  Plotly.react(
-    divId,
-    [{ x: centers, y: counts, type: "bar", marker: { color: "#185FA5" }, opacity: 0.85 }],
-    mergeLayout({
-      title: { text: "Intensity Histogram", font: { size: 13 } },
-      xaxis: boxedAxis({ title: "Calculated ADU", range: [vmin, vmax] }),
-      yaxis: yAxis,
-    }),
-    PLOTLY_CONFIG
-  );
-}
-
-function updateHistogramChart(divId, { adu, bins = 80, vmin, vmax, yMax, yAxisType = "linear" }) {
+function updateHistogramChart(divId, { adu, bins = 80, vmin, vmax, yMax }) {
   const counts = new Array(bins).fill(0);
   const span = vmax - vmin || 1;
   const binWidth = span / bins;
@@ -95,7 +69,19 @@ function updateHistogramChart(divId, { adu, bins = 80, vmin, vmax, yMax, yAxisTy
   const centers = new Array(bins);
   for (let i = 0; i < bins; i++) centers[i] = vmin + (i + 0.5) * binWidth;
 
-  renderHistogramChart(divId, { centers, counts, vmin, vmax, yMax, yAxisType });
+  const yAxis = boxedAxis({ title: "Pixel Count", type: "log" });
+  if (yMax !== undefined) yAxis.range = [0, Math.log10(yMax)]; // log-axis range is in log10 units
+
+  Plotly.react(
+    divId,
+    [{ x: centers, y: counts, type: "bar", marker: { color: "#185FA5" }, opacity: 0.85 }],
+    mergeLayout({
+      title: { text: "Intensity Histogram", font: { size: 13 } },
+      xaxis: boxedAxis({ title: "Calculated ADU", range: [vmin, vmax] }),
+      yaxis: yAxis,
+    }),
+    PLOTLY_CONFIG
+  );
 
   return { centers, counts };
 }
@@ -171,25 +157,16 @@ function updateLineProfileChart(divId, { rowData, vmin, vmax, colStart, colEnd, 
 
 // ---------------------------------------------------------------------------
 // Panel 4: static SNR curve (log-log), with a red marker at the current
-// operating point and a shaded +/-1 SNR band. When EM Gain and/or Binning
-// are active, a second "Binned SNR" trace shows the actual current-settings
-// curve, and the baseline "Single Pixel SNR" curve is dashed so the two read
-// as reference vs. active rather than looking like two equally-valid curves.
+// operating point and a shaded +/-1 SNR band.
 // ---------------------------------------------------------------------------
-
-const SNR_BASELINE_COLOR = "#185FA5";
-const SNR_ACTIVE_COLOR = "#c9822f";
 
 function initSNRChart(divId) {
   Plotly.newPlot(divId, [], mergeLayout({ title: { text: "Signal-to-Noise", font: { size: 13 } } }), PLOTLY_CONFIG);
 }
 
-function updateSNRChart(divId, { photonRange, baselineSnr, activeSnr, modifierActive, currentPhotons, currentSNR }) {
-  // The shaded +/-1 SNR band always tracks the ACTIVE curve (what you're
-  // actually configured for right now), same as the current-point marker.
-  const snrHi = activeSnr.map((v) => v + 1);
-  const snrLo = activeSnr.map((v) => Math.max(v - 1, 0));
-  const bandColor = modifierActive ? "rgba(201,130,47,0.15)" : "rgba(24,95,165,0.2)";
+function updateSNRChart(divId, { photonRange, snr, currentPhotons, currentSNR }) {
+  const snrHi = snr.map((v) => v + 1);
+  const snrLo = snr.map((v) => Math.max(v - 1, 0));
 
   // Fix the x-axis to the span of the photon sweep itself (which only
   // depends on full well / QE, not on the current photon count). Without an
@@ -199,45 +176,31 @@ function updateSNRChart(divId, { photonRange, baselineSnr, activeSnr, modifierAc
   // itself hasn't changed.
   const xRange = [Math.log10(photonRange[0]), Math.log10(photonRange[photonRange.length - 1])];
 
-  const traces = [
-    {
-      x: photonRange, y: snrHi, type: "scatter", mode: "lines",
-      line: { width: 0 }, hoverinfo: "skip",
-    },
-    {
-      x: photonRange, y: snrLo, type: "scatter", mode: "lines",
-      fill: "tonexty", fillcolor: bandColor, line: { width: 0 },
-      hoverinfo: "skip",
-    },
-    {
-      x: photonRange, y: baselineSnr, type: "scatter", mode: "lines",
-      line: { color: SNR_BASELINE_COLOR, width: 2, dash: modifierActive ? "dash" : "solid" },
-      // Match the Comparison panel's hover precision (one decimal place)
-      // rather than the default full floating-point display; append a label
-      // only once there's a second curve to tell it apart from.
-      hovertemplate: modifierActive
-        ? "%{x:.1f}, %{y:.1f}<br>Single Pixel SNR<extra></extra>"
-        : "%{x:.1f}, %{y:.1f}<extra></extra>",
-    },
-  ];
-
-  if (modifierActive) {
-    traces.push({
-      x: photonRange, y: activeSnr, type: "scatter", mode: "lines",
-      line: { color: SNR_ACTIVE_COLOR, width: 2 },
-      hovertemplate: "%{x:.1f}, %{y:.1f}<br>Binned SNR<extra></extra>",
-    });
-  }
-
-  traces.push({
-    x: [currentPhotons], y: [currentSNR], type: "scatter", mode: "markers",
-    marker: { color: "#e63946", size: 10, line: { color: "#7a1620", width: 1 } },
-    hovertemplate: "%{x:.1f}, %{y:.1f}<extra></extra>",
-  });
-
   Plotly.react(
     divId,
-    traces,
+    [
+      {
+        x: photonRange, y: snrHi, type: "scatter", mode: "lines",
+        line: { width: 0 }, hoverinfo: "skip",
+      },
+      {
+        x: photonRange, y: snrLo, type: "scatter", mode: "lines",
+        fill: "tonexty", fillcolor: "rgba(24,95,165,0.2)", line: { width: 0 },
+        hoverinfo: "skip",
+      },
+      {
+        x: photonRange, y: snr, type: "scatter", mode: "lines",
+        line: { color: "#185FA5", width: 2 },
+        // Match the Comparison panel's hover precision (one decimal place)
+        // rather than the default full floating-point display.
+        hovertemplate: "%{x:.1f}, %{y:.1f}<extra></extra>",
+      },
+      {
+        x: [currentPhotons], y: [currentSNR], type: "scatter", mode: "markers",
+        marker: { color: "#e63946", size: 10, line: { color: "#7a1620", width: 1 } },
+        hovertemplate: "%{x:.1f}, %{y:.1f}<extra></extra>",
+      },
+    ],
     mergeLayout({
       title: { text: "Signal-to-Noise", font: { size: 13 } },
       xaxis: boxedAxis({ title: "Incident Photons / Pixel", type: "log", range: xRange }),
@@ -373,7 +336,6 @@ function updateComparisonChart(divId, { title, xAxisTitle, traces }) {
 window.CameraCharts = {
   initHistogramChart,
   updateHistogramChart,
-  renderHistogramChart,
   initLineProfileChart,
   updateLineProfileChart,
   initSNRChart,

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhotonBench - A Camera Simulation Tool</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-titlebar">
+    <div class="app-title-group">
+      <h1>PhotonBench</h1>
+      <span class="app-subtitle">A Camera Simulation Tool</span>
+      <span class="app-version" title="Pre-release - see CHANGELOG.md for version history">v0.2.0</span>
+    </div>
+    <button id="info-btn" class="btn">Info</button>
+  </header>
+
+  <div id="info-overlay" class="info-overlay" hidden>
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="info-modal-content">
+      <button id="info-close-btn" class="info-close" aria-label="Close">&times;</button>
+      <div id="info-modal-content" class="info-text"></div>
+    </div>
+  </div>
+
+  <div id="comparison-info-overlay" class="info-overlay" hidden>
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="comparison-info-modal-content">
+      <button id="comparison-info-close-btn" class="info-close" aria-label="Close">&times;</button>
+      <div id="comparison-info-modal-content" class="info-text">
+        <p>SNR is an important quantity that allows for a compact comparison of a camera's hypothetical performance under different illumination conditions. Here SNR is plotted as a function of incident photons and as a function of 13 µm pixels (Normalized SNR). Pixel size is important here as, generally, larger pixels will be more sensitive due to the larger surface area. Thus, the Normalized SNR plot is created by scaling the SNR by the ratio of the pixel surface area to a reference 13 µm pixel. The latter plot provides a more accurate comparison of two cameras with different pixel sizes under the same illumination conditions.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-grid">
+
+    <!-- Left column: Box 6, parameters. Scrolls independently if it doesn't
+         all fit vertically. -->
+    <section class="panel params-column" id="panel-6">
+      <div class="panel-body panel-body-controls">
+        <div class="controls-group">
+          <h3>Experimental Parameters</h3>
+          <div id="experimental-controls" class="controls-list"></div>
+        </div>
+        <div class="controls-group">
+          <h3>Camera Parameters</h3>
+          <div id="camera-controls" class="controls-list"></div>
+        </div>
+        <div class="reset-wrapper">
+          <button id="reset-defaults-btn" class="btn btn-reset">Reset to Default</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Middle column: Box 1 (sensor sim) on top, Camera Sensitivity
+         Comparison panel filling the remaining space below it (the old
+         info-text space, repurposed - the info text itself now lives in
+         the Info overlay triggered from the header). Neither part scrolls
+         on its own yet; the comparison panel is empty until the comparison
+         feature is built. -->
+    <div class="center-column">
+      <section class="panel" id="panel-1">
+        <div class="panel-header">
+          <h2>Camera Simulator</h2>
+          <div class="panel-controls">
+            <div class="sensor-dims">
+              <label for="sensor-width-input">W</label>
+              <input type="number" id="sensor-width-input" class="dim-input" min="1024" max="5000" step="1" value="1024" />
+              <span class="dims-x">&times;</span>
+              <label for="sensor-height-input">H</label>
+              <input type="number" id="sensor-height-input" class="dim-input" min="1" max="5000" step="1" value="1024" />
+            </div>
+            <button id="export-btn" class="btn">Export All</button>
+            <button id="play-pause-btn" class="btn btn-primary">Play</button>
+          </div>
+        </div>
+        <div class="panel-body panel-body-canvas">
+          <canvas id="sensor-canvas"></canvas>
+        </div>
+      </section>
+
+      <section class="panel comparison-panel" id="panel-comparison">
+        <div class="panel-header">
+          <h2>Camera Sensitivity Comparison</h2>
+          <div class="panel-controls">
+            <button id="comparison-info-btn" type="button" class="btn btn-sm" aria-label="About the Normalized SNR plot" title="About the Normalized SNR plot">Info</button>
+          </div>
+        </div>
+        <div class="panel-body comparison-body">
+          <div id="comparison-plot-1" class="comparison-plot chart"></div>
+          <div id="comparison-plot-2" class="comparison-plot chart"></div>
+          <div id="comparison-legend-wrap" class="comparison-legend-wrap">
+            <button id="comparison-legend-toggle" type="button" class="comparison-legend-toggle" aria-label="Hide trace legend" title="Hide trace legend">&raquo;</button>
+            <div id="comparison-legend" class="comparison-legend"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Right column: Boxes 2-5, stacked and independently scrollable so
+         none of them need to shrink to fit. -->
+    <div class="plots-column">
+      <section class="panel" id="panel-2">
+        <div class="panel-header panel-header-plot">
+          <div class="panel-controls">
+            <button id="export-histogram-btn" class="btn btn-sm">Export</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="histogram-chart" class="chart"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-3">
+        <div class="panel-header panel-header-plot">
+          <div class="panel-controls">
+            <button id="export-line-btn" class="btn btn-sm">Export</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="line-profile-chart" class="chart"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-4">
+        <div class="panel-header snr-panel-header">
+          <div class="panel-controls">
+            <button id="compare-btn" type="button" class="btn btn-sm">Compare</button>
+          </div>
+          <div class="panel-controls">
+            <button id="export-snr-btn" class="btn btn-sm">Export</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="snr-chart" class="chart"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-5">
+        <div class="panel-header panel-header-plot">
+          <div class="panel-controls">
+            <button id="export-noise-btn" class="btn btn-sm">Export</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="noise-chart" class="chart"></div>
+        </div>
+      </section>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="src/physics.js"></script>
+  <script src="src/colormap.js"></script>
+  <script src="src/canvas.js"></script>
+  <script src="src/charts.js"></script>
+  <script src="src/controls.js"></script>
+  <script src="src/info.js"></script>
+  <script src="src/exporters.js"></script>
+  <script src="src/main.js"></script>
+</body>
+</html>

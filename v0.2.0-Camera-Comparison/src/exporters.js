@@ -141,40 +141,6 @@ function exportNoise({ params, staticData, stamp = timestamp() }) {
 }
 
 /**
- * Camera Sensitivity Comparison panel: PNGs of both plots, plus one CSV
- * covering every saved trace on both (long format - one row per trace per
- * photon-range point - since different traces can have been saved under
- * different parameters and so don't necessarily share the same x-axis
- * points). No single `params` metadata header applies here the way it does
- * for the other panels, since each trace was saved at a different, possibly
- * different, point in time with its own settings.
- * @param {object} args
- * @param {Array<{name: string, photonRange: number[], snr: number[], snrNormalized: number[]}>} args.comparisonTraces
- * @param {string} [args.stamp] shared timestamp, if called as part of a future exportAll-style batch
- */
-function exportComparison({ comparisonTraces, stamp = timestamp() }) {
-  downloadPlotlyPNG("comparison-plot-1", `comparison-snr_${stamp}.png`);
-  downloadPlotlyPNG("comparison-plot-2", `comparison-snr-normalized_${stamp}.png`);
-
-  const traceNames = comparisonTraces.map((t) => t.name).join(", ") || "(none saved)";
-  const header = [
-    "# PhotonBench export",
-    "# Camera Sensitivity Comparison",
-    `# Traces: ${traceNames}`,
-    "",
-  ].join("\n");
-
-  const rows = ["TraceName,IncidentPhotons,SNR,NormalizedSNR_13umPixel"];
-  for (const t of comparisonTraces) {
-    for (let i = 0; i < t.photonRange.length; i++) {
-      rows.push([t.name, t.photonRange[i], t.snr[i], t.snrNormalized[i]].join(","));
-    }
-  }
-  const csv = header + rows.join("\n") + "\n";
-  downloadTextFile(`comparison-snr_${stamp}.txt`, csv);
-}
-
-/**
  * Export everything: PNGs for panels 1-5, text (CSV) files for panels 2-5,
  * with `params` written as a metadata header in each text file. All files
  * share one timestamp so the batch reads as a matched set.
@@ -201,7 +167,6 @@ window.CameraExporters = {
   exportLineProfile,
   exportSNR,
   exportNoise,
-  exportComparison,
   downloadTextFile,
   downloadCanvasPNG,
   downloadPlotlyPNG,
