@@ -85,7 +85,7 @@
     <div class="app-title-group">
       <h1>PhotonBench</h1>
       <span class="app-subtitle">A Camera Simulation Tool</span>
-      <span class="app-version" title="Pre-release - see CHANGELOG.md for version history">v0.5.0</span>
+      <span class="app-version" title="Pre-release - see CHANGELOG.md for version history">v0.4.0</span>
     </div>
     <div class="app-header-right">
       <nav class="mode-tabs" role="tablist" aria-label="Simulator mode">
@@ -178,12 +178,8 @@
           <dd>Adjusts the number of photons/pixel in the illuminated area.</dd>
           <dt>Exposure Time (s)</dt>
           <dd>Interacts with the dark current to model thermal noise to the simulation. Does not interact with photons or any other part of the simulation.</dd>
-          <dt>Illumination Shape</dt>
-          <dd>Circle or Gaussian - selects the spatial photon-map model. Circle is a uniformly lit disc; Gaussian is a 2D Gaussian whose peak equals the Photons setting, hard-clipped at 5 sigma. Only one shape is active at a time.</dd>
           <dt>Spot Radius (px)</dt>
-          <dd>Pixel radius of the illuminated circle, when Circle is selected.</dd>
-          <dt>FWHM (px)</dt>
-          <dd>Full width at half maximum of the illuminated Gaussian, when Gaussian is selected.</dd>
+          <dd>Pixel radius of illuminated circle in the simulation.</dd>
         </dl>
 
         <h3 class="info-subhead">Camera Parameters</h3>

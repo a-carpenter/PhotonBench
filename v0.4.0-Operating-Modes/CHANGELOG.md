@@ -4,13 +4,6 @@ All notable changes to PhotonBench are documented here.
 
 PhotonBench is in **pre-release** (version `0.y.z`, per [Semantic Versioning](https://semver.org/)). It is still in an active feedback-gathering phase and is not yet intended for broad, general release - expect things to keep changing.
 
-## [0.5.0] - 2026-07-23
-
-New Gaussian illumination shape, alongside the original uniform disc.
-
-### Added
-- **Gaussian illumination shape**: a new **Illumination Shape** selector (Circle / Gaussian) in Experimental Parameters, offering a second spatial photon-map model alongside the original uniform disc. Circle and Gaussian are mutually exclusive, clickable boxes - selecting one deselects the other - each embedding its own parameter (Circle keeps the existing Spot Radius; Gaussian adds a new **FWHM** parameter, sharing Spot Radius's exact bounds and default of 10-500 px / 300 px). The Gaussian's amplitude is its **peak** value (equal to the Photons parameter, not the total integrated photon count), hard-clipped at 5 sigma. Circle remains the default in both Imaging and Spectroscopy. The Line Profile panel's illuminated-region highlight and Spectroscopy's spectrum binning both adapt automatically to whichever shape is selected.
-
 ## [0.4.0] - 2026-07-22
 
 New Spectroscopy mode: a full ROI/binning-driven calculated spectrum with an optional wavelength axis, plus completed Info content across every panel.

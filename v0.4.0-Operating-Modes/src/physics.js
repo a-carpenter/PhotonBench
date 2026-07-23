@@ -147,59 +147,6 @@ function makeCircularIllumination(rows, cols, nPhotons, radius, centerRow, cente
   return photonMap;
 }
 
-// Converts a Gaussian's FWHM (full width at half maximum - the user-facing
-// parameter, since it's the more intuitive/recognizable quantity) to sigma
-// (what the actual exp() formula needs): sigma = FWHM / (2 sqrt(2 ln 2)).
-// Exported so main.js can reuse the exact same conversion for anything that
-// needs to reason about the Gaussian's effective footprint (e.g. the Line
-// Profile panel's illuminated-region highlight) without duplicating the
-// constant.
-const GAUSSIAN_FWHM_TO_SIGMA = 1 / (2 * Math.sqrt(2 * Math.log(2)));
-// Hard clip radius, in multiples of sigma - beyond this the Gaussian's true
-// value is left at 0 rather than computed, both because it's numerically
-// negligible out there (about 0.004% of the peak amplitude survives past 5
-// sigma) and so the sensor doesn't spend time computing exp() for millions
-// of pixels that would round to 0 anyway.
-const GAUSSIAN_CLIP_SIGMAS = 5;
-
-/**
- * Build a per-pixel incident-photon map: a 2D Gaussian centered on the
- * sensor (by default), amplitude = nPhotons AT ITS PEAK (not the total
- * integrated photon count across the whole spot - a same-Photons Gaussian
- * and disc are not "the same total light", they're "the same brightest
- * pixel"). Hard-clipped at GAUSSIAN_CLIP_SIGMAS sigma - unlike
- * makeCircularIllumination's disc, a Gaussian has no discrete edge to
- * anti-alias in the first place, since it's already smooth/continuous
- * everywhere by construction; the clip is purely a "stop wasting time out
- * where it's negligible" cutoff, not a physical boundary.
- *
- * @returns {Float64Array} length rows*cols, row-major (index = row*cols+col)
- */
-function makeGaussianIllumination(rows, cols, nPhotons, fwhm, centerRow, centerCol) {
-  const cy = centerRow ?? Math.floor(rows / 2);
-  const cx = centerCol ?? Math.floor(cols / 2);
-  const photonMap = new Float64Array(rows * cols);
-  const sigma = fwhm * GAUSSIAN_FWHM_TO_SIGMA;
-  const twoSigma2 = 2 * sigma * sigma;
-  const clipRadius = GAUSSIAN_CLIP_SIGMAS * sigma;
-  const clipRadius2 = clipRadius * clipRadius;
-
-  for (let y = 0; y < rows; y++) {
-    const dy = y - cy;
-    const dy2 = dy * dy;
-    const rowOffset = y * cols;
-    for (let x = 0; x < cols; x++) {
-      const dx = x - cx;
-      const dist2 = dy2 + dx * dx;
-      if (dist2 <= clipRadius2) {
-        photonMap[rowOffset + x] = nPhotons * Math.exp(-dist2 / twoSigma2);
-      }
-      // else: past the clip radius - leave at the Float64Array default of 0.
-    }
-  }
-  return photonMap;
-}
-
 /**
  * Simulate one full sensor frame: shot noise + dark current (thermal) noise
  * + read noise + fixed offset, clipped to full well, then digitized to
@@ -434,9 +381,6 @@ window.CameraPhysics = {
   gaussianRandom,
   poissonRandom,
   makeCircularIllumination,
-  makeGaussianIllumination,
-  GAUSSIAN_FWHM_TO_SIGMA,
-  GAUSSIAN_CLIP_SIGMAS,
   simulateSensor,
   simulateBinnedFrame,
   analyticNoise,

@@ -61,10 +61,6 @@
   const DEFAULT_PARAMS = {
     exposureTime: 1.0,
     spotRadius: 300,
-    // Gaussian illumination's FWHM (see "Illumination Shape" below) shares
-    // Spot Radius's exact bounds/default (10-500 px, default 300) so the two
-    // shapes look comparably sized at their defaults.
-    gaussianFwhm: 300,
     // Dispersion Model (general_spectrometer_model.py port - see
     // Spectroscopy's "Dispersion Model" group below): a generic,
     // non-proprietary Czerny-Turner grating model. Not camera-type-specific,
@@ -85,15 +81,6 @@
     photons: SENSOR_TYPE_DEFAULTS[DEFAULT_SENSOR_TYPE].photons,
     exposureTime: DEFAULT_PARAMS.exposureTime,
     spotRadius: DEFAULT_PARAMS.spotRadius,
-    gaussianFwhm: DEFAULT_PARAMS.gaussianFwhm,
-    // Illumination Shape: "circle" (the original uniform disc) or
-    // "gaussian" (a 2D Gaussian, peak amplitude = Photons, hard-clipped at
-    // 5 sigma - see Physics.makeGaussianIllumination). Circle by default for
-    // both Imaging and Spectroscopy (the only two modes that use spatial
-    // illumination at all). Not a slider-backed control - toggled by the
-    // Circle/Gaussian boxes in Experimental Parameters (see
-    // setIlluminationShape() below).
-    illuminationShape: "circle",
     // Dispersion Model (Spectroscopy) - see DEFAULT_PARAMS above.
     centerWavelengthNm: DEFAULT_PARAMS.centerWavelengthNm,
     grooveDensity: DEFAULT_PARAMS.grooveDensity,
@@ -190,8 +177,7 @@
     // photons) instead of being capped well below the full-well ceiling.
     { key: "photons", id: "photons", label: "Photons", min: 1, max: 1000000000, scale: "log", value: params.photons },
     { key: "exposureTime", id: "exposure", label: "Exposure", unit: "s", min: 0.001, max: 3600, scale: "log", value: params.exposureTime },
-    // Spot Radius is NOT in this list - it's embedded inside the "Circle" box
-    // of the Illumination Shape selector below, built separately.
+    { key: "spotRadius", id: "spot-radius", label: "Spot Radius", unit: "px", min: 10, max: 500, scale: "linear", value: params.spotRadius },
   ];
 
   const CAMERA_PARAM_DEFS = [
@@ -226,115 +212,6 @@
     });
     controlsByKey[def.key] = control;
     experimentalContainer.appendChild(control.element);
-  }
-
-  // --- Illumination Shape (Circle / Gaussian) ------------------------------
-  // A two-box, mutually-exclusive selector: exactly one is ever active.
-  // Circle is the original uniform disc, embedding the existing Spot Radius
-  // parameter. Gaussian is a 2D Gaussian centered on the sensor - amplitude
-  // = Photons AT ITS PEAK (not the total integrated photon count spread
-  // across the spot), hard-clipped at 5 sigma - embedding its own FWHM
-  // parameter, sharing Spot Radius's exact bounds/default (10-500 px,
-  // default 300) for visual consistency between the two shapes. The
-  // non-selected box's embedded control is disabled (not hidden), so its
-  // last value stays visible for reference rather than disappearing.
-  // Default is Circle for both Imaging and Spectroscopy (the only two modes
-  // that use spatial illumination at all - SNR Only's panels are analytic
-  // and don't depend on shape). See makeIlluminationMap() below for where
-  // this actually drives which physics.js function builds the photon map.
-  const illuminationShapeGroup = document.createElement("div");
-  illuminationShapeGroup.className = "param-control illumination-shape-group";
-  illuminationShapeGroup.id = "illumination-shape-group";
-
-  const illuminationShapeLabel = document.createElement("label");
-  illuminationShapeLabel.textContent = "Illumination Shape";
-  illuminationShapeGroup.appendChild(illuminationShapeLabel);
-
-  const illuminationShapeBoxes = document.createElement("div");
-  illuminationShapeBoxes.className = "illumination-shape-boxes";
-  illuminationShapeBoxes.setAttribute("role", "radiogroup");
-  illuminationShapeBoxes.setAttribute("aria-label", "Illumination Shape");
-  illuminationShapeGroup.appendChild(illuminationShapeBoxes);
-
-  const spotRadiusControl = Controls.createParamControl({
-    id: "spot-radius", label: "Spot Radius", unit: "px", min: 10, max: 500,
-    scale: "linear", value: params.spotRadius,
-    onChange: (v) => onAnyParamChange("spotRadius", v),
-  });
-  controlsByKey.spotRadius = spotRadiusControl;
-
-  const gaussianFwhmControl = Controls.createParamControl({
-    id: "gaussian-fwhm", label: "FWHM", unit: "px", min: 10, max: 500,
-    scale: "linear", value: params.gaussianFwhm,
-    onChange: (v) => onAnyParamChange("gaussianFwhm", v),
-  });
-  controlsByKey.gaussianFwhm = gaussianFwhmControl;
-
-  function buildIlluminationShapeBox(shape, title, embeddedControl) {
-    const box = document.createElement("div");
-    box.className = "illumination-shape-box";
-    box.id = `illumination-shape-${shape}-box`;
-    box.dataset.shape = shape;
-    box.setAttribute("role", "radio");
-    box.setAttribute("tabindex", "0");
-
-    const titleBtn = document.createElement("button");
-    titleBtn.type = "button";
-    titleBtn.className = "illumination-shape-box-title";
-    titleBtn.id = `illumination-shape-${shape}-btn`;
-    titleBtn.textContent = title;
-    box.appendChild(titleBtn);
-    box.appendChild(embeddedControl.element);
-
-    // Clicking anywhere in the box - including the embedded slider/number
-    // input - selects this shape; that's harmless (even desirable) for the
-    // embedded control itself, since editing a shape's own parameter
-    // obviously implies you want that shape selected. Keyboard users get the
-    // same behavior via the box's own tabindex + Enter/Space.
-    box.addEventListener("click", () => setIlluminationShape(shape));
-    box.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        setIlluminationShape(shape);
-      }
-    });
-
-    return box;
-  }
-
-  const illuminationShapeBoxesByShape = {
-    circle: buildIlluminationShapeBox("circle", "Circle", spotRadiusControl),
-    gaussian: buildIlluminationShapeBox("gaussian", "Gaussian", gaussianFwhmControl),
-  };
-  illuminationShapeBoxes.appendChild(illuminationShapeBoxesByShape.circle);
-  illuminationShapeBoxes.appendChild(illuminationShapeBoxesByShape.gaussian);
-  experimentalContainer.appendChild(illuminationShapeGroup);
-
-  // Pure DOM sync (box highlight/aria state + which embedded control is
-  // disabled) off params.illuminationShape's CURRENT value - no redraw side
-  // effects, so it's safe to call once at setup time before drawLiveFrame()
-  // etc. even exist yet.
-  function syncIlluminationShapeUI() {
-    for (const [shape, box] of Object.entries(illuminationShapeBoxesByShape)) {
-      const active = shape === params.illuminationShape;
-      box.classList.toggle("is-active", active);
-      box.setAttribute("aria-checked", String(active));
-    }
-    spotRadiusControl.element.querySelectorAll("input").forEach((el) => {
-      el.disabled = params.illuminationShape !== "circle";
-    });
-    gaussianFwhmControl.element.querySelectorAll("input").forEach((el) => {
-      el.disabled = params.illuminationShape !== "gaussian";
-    });
-  }
-  syncIlluminationShapeUI();
-
-  function setIlluminationShape(shape) {
-    params.illuminationShape = shape;
-    syncIlluminationShapeUI();
-    refreshDisplayRanges();
-    drawLiveFrame();
-    updateStaticPanels();
   }
 
   for (const def of CAMERA_PARAM_DEFS) {
@@ -711,10 +588,6 @@
     // (see params.spectrumXAxisMode above), so it needs the same explicit
     // reset back to its own default (Pixel).
     setSpectrumXAxisMode("pixel");
-    // Illumination Shape isn't a slider-backed control either (the DEFAULT_PARAMS
-    // loop above already reset Spot Radius/FWHM's VALUES, but not which box is
-    // selected) - reset back to Circle, its own default.
-    setIlluminationShape("circle");
     // CCD + its full defaults (Photons, QE, Dark Current, Read Noise, Full
     // Well Depth, Offset, Gain, Pixel Size, Bit Depth); this also triggers
     // the refresh/redraw, so it's called last.
@@ -822,20 +695,10 @@
     return sensorType === "ccd" ? "charge" : "digital";
   }
 
-  // Dispatches to whichever physics.js illumination function matches
-  // params.illuminationShape - the single place that decision is made, so
-  // every call site (live frame, display-range calibration, Spectroscopy's
-  // Calculated Spectrum) automatically stays in sync with the Circle/
-  // Gaussian selector without needing its own branch.
-  function makeIlluminationMap(rows, cols, nPhotons) {
-    if (params.illuminationShape === "gaussian") {
-      return Physics.makeGaussianIllumination(rows, cols, nPhotons, params.gaussianFwhm);
-    }
-    return Physics.makeCircularIllumination(rows, cols, nPhotons, params.spotRadius);
-  }
-
   function refreshDisplayRanges() {
-    const photonMap = makeIlluminationMap(params.sensorHeight, params.sensorWidth, params.photons);
+    const photonMap = Physics.makeCircularIllumination(
+      params.sensorHeight, params.sensorWidth, params.photons, params.spotRadius
+    );
     const { adu } = Physics.simulateBinnedFrame(
       photonMap, params.sensorHeight, params.sensorWidth, cameraParamsForPhysics(),
       params.binHorizontal, params.binVertical, currentBinningMode()
@@ -956,7 +819,9 @@
   function updateSpectrumIfActive() {
     if (currentMode !== "spectroscopy") return;
     updateWavelengthRangeDisplay();
-    const photonMap = makeIlluminationMap(params.sensorHeight, params.sensorWidth, params.photons);
+    const photonMap = Physics.makeCircularIllumination(
+      params.sensorHeight, params.sensorWidth, params.photons, params.spotRadius
+    );
     let spectrumSourceMap = photonMap;
     let spectrumRows = params.sensorHeight;
     if (!params.fullVerticalBin) {
@@ -1061,7 +926,9 @@
   }
 
   function drawLiveFrame() {
-    const photonMap = makeIlluminationMap(params.sensorHeight, params.sensorWidth, params.photons);
+    const photonMap = Physics.makeCircularIllumination(
+      params.sensorHeight, params.sensorWidth, params.photons, params.spotRadius
+    );
     const { adu, binnedRows, binnedCols } = Physics.simulateBinnedFrame(
       photonMap, params.sensorHeight, params.sensorWidth, cameraParamsForPhysics(),
       params.binHorizontal, params.binVertical, currentBinningMode()
@@ -1098,19 +965,11 @@
     const rowData = adu.subarray(binnedMiddleRow * binnedCols, (binnedMiddleRow + 1) * binnedCols);
 
     // The illuminated ("signal") portion of this row, in BINNED-pixel
-    // coordinates: the illumination pattern is defined in native-pixel space
-    // (see makeIlluminationMap above), so its radius is scaled down by the
-    // horizontal bin factor to land on the corresponding binned columns.
-    // Circle's radius is just Spot Radius; Gaussian has no discrete edge, so
-    // its equivalent here is the same 5-sigma clip radius
-    // makeGaussianIllumination() itself uses - beyond that, the map is truly
-    // zero, so it's the natural boundary of "the illuminated portion" for a
-    // Gaussian too.
-    const illuminationHighlightRadius = params.illuminationShape === "gaussian"
-      ? Physics.GAUSSIAN_CLIP_SIGMAS * (params.gaussianFwhm * Physics.GAUSSIAN_FWHM_TO_SIGMA)
-      : params.spotRadius;
+    // coordinates: the illumination disc is defined in native-pixel space
+    // (see makeCircularIllumination above), so its radius is scaled down by
+    // the horizontal bin factor to land on the corresponding binned columns.
     const centerCol = Math.floor(binnedCols / 2);
-    const binnedRadius = illuminationHighlightRadius / params.binHorizontal;
+    const binnedRadius = params.spotRadius / params.binHorizontal;
     const colStart = Math.max(0, Math.round(centerCol - binnedRadius));
     const colEnd = Math.min(binnedCols - 1, Math.round(centerCol + binnedRadius));
     let signalMean;

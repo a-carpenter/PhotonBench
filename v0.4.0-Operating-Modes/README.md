@@ -31,12 +31,9 @@ computed using **publicly available** specifications from manufacturer
 datasheets - it does not reproduce any manufacturer's proprietary
 calculator.
 
-The illuminated region is centered on the sensor and can be shaped as either
-a uniformly lit disc ("Circle", adjustable Spot Radius) or a 2D Gaussian
-("Gaussian", adjustable FWHM, amplitude equal to the Photons parameter at
-its peak, hard-clipped at 5 sigma) - see **Illumination Shape** below.
-Everywhere outside the illuminated region receives zero incident photons
-(dark current and read noise only).
+The illuminated region is a uniformly lit disc ("spot") of adjustable radius
+centered on the sensor; everywhere outside the spot receives zero incident
+photons (dark current and read noise only).
 
 ### Camera Type
 
@@ -95,8 +92,7 @@ by EM Gain outright, with no cap or floor.
   comparing cameras under equivalent illumination), with a collapsible,
   color-coded legend supporting per-trace delete.
 - **Parameters** - Camera Type selector, then collapsible Experimental
-  Parameters (Photons, Exposure Time, Illumination Shape [Circle/Spot Radius
-  or Gaussian/FWHM]) and Camera Parameters
+  Parameters (Photons, Exposure Time, Spot Radius) and Camera Parameters
   (Quantum Efficiency, Dark Current, Read Noise, Full Well Depth, Register
   Well Depth [CCD], Offset, Sensitivity, Pixel Size, Bit Depth, Binning, EM
   Gain [CCD]) sections.

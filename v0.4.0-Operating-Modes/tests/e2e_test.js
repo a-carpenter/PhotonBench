@@ -140,14 +140,12 @@ const offsetNumberEl = window.document.getElementById("offset-number");
 check("Default gain is 1", parseFloat(gainNumberEl.value) === 1, gainNumberEl.value);
 check("Default offset is 100", parseFloat(offsetNumberEl.value) === 100, offsetNumberEl.value);
 
-// --- 1. Controls were built: 5 experimental (Photons, Exposure Time, the
-//        Illumination Shape group wrapper itself, and its two embedded
-//        Spot Radius / FWHM controls) + 7 camera sliders + bit depth
+// --- 1. Controls were built: 3 experimental + 7 camera sliders + bit depth
 //        select + EM Gain's own two .param-control-classed wrapper elements
 //        (its outer checkbox group and its inner slider) ---
 const expControls = window.document.querySelectorAll("#experimental-controls .param-control");
 const camControls = window.document.querySelectorAll("#camera-controls .param-control");
-check("5 experimental parameter controls created (Photons + Exposure Time + Illumination Shape group + Spot Radius + FWHM)", expControls.length === 5, expControls.length);
+check("3 experimental parameter controls created", expControls.length === 3, expControls.length);
 check(
   "14 camera parameter controls created (7 sliders + bit depth select + EM Gain group + EM Gain slider + Register Well Depth + Binning group + 2 bin selects)",
   camControls.length === 14,
@@ -303,18 +301,18 @@ check(
 );
 const panel6InfoDtNames = Array.from(panel6InfoContent.querySelectorAll(".info-param-list dt")).map((el) => el.textContent);
 check(
-  "Parameters panel Info overlay documents all 5 Experimental Parameters (incl. Illumination Shape and FWHM)",
-  ["Photons (#)", "Exposure Time (s)", "Illumination Shape", "Spot Radius (px)", "FWHM (px)"].every((name) => panel6InfoDtNames.includes(name)),
+  "Parameters panel Info overlay documents all 3 Experimental Parameters",
+  ["Photons (#)", "Exposure Time (s)", "Spot Radius (px)"].every((name) => panel6InfoDtNames.includes(name)),
   panel6InfoDtNames
 );
 check(
   "Parameters panel Info overlay documents all 11 Camera Parameters, in the order they appear in the panel",
-  JSON.stringify(panel6InfoDtNames.slice(5)) === JSON.stringify([
+  JSON.stringify(panel6InfoDtNames.slice(3)) === JSON.stringify([
     "Quantum Efficiency", "Dark Current (e-/px/s)", "Read Noise (e-)", "Full Well Depth (e-)",
     "Register Well Depth (e-)", "Offset (e-)", "Sensitivity (e-/ADU)", "Pixel Size (µm)",
     "Bit Depth", "Binning", "Enable EM Gain",
   ]),
-  panel6InfoDtNames.slice(5)
+  panel6InfoDtNames.slice(3)
 );
 check(
   "Every dt in the Parameters panel Info overlay has a non-empty dd definition right after it",
@@ -2730,102 +2728,6 @@ check(
   "Switching back to Imaging redraws the Noise chart with its legend shown again",
   !!lastNoiseAfterImaging && lastNoiseAfterImaging.layout.showlegend === true,
   lastNoiseAfterImaging && lastNoiseAfterImaging.layout.showlegend
-);
-
-// ============================================================================
-// Illumination Shape (Circle / Gaussian)
-// ============================================================================
-
-// Make sure we're starting from Imaging with everything at its defaults.
-window.document.getElementById("mode-tab-imaging").dispatchEvent(new window.Event("click"));
-window.document.getElementById("reset-defaults-btn").dispatchEvent(new window.Event("click"));
-
-const illumGroup = window.document.getElementById("illumination-shape-group");
-const circleBox = window.document.getElementById("illumination-shape-circle-box");
-const gaussianBox = window.document.getElementById("illumination-shape-gaussian-box");
-const circleBtn = window.document.getElementById("illumination-shape-circle-btn");
-const gaussianBtn = window.document.getElementById("illumination-shape-gaussian-btn");
-const spotRadiusSlider = window.document.getElementById("spot-radius-slider");
-const spotRadiusNumber = window.document.getElementById("spot-radius-number");
-const gaussianFwhmSlider = window.document.getElementById("gaussian-fwhm-slider");
-const gaussianFwhmNumber = window.document.getElementById("gaussian-fwhm-number");
-
-check("Illumination Shape group exists in the Experimental Parameters section", !!illumGroup && illumGroup.closest("#experimental-controls") === window.document.getElementById("experimental-controls"));
-check("Circle and Gaussian boxes both exist", !!circleBox && !!gaussianBox);
-check("Circle box title reads 'Circle'", circleBtn.textContent === "Circle", circleBtn.textContent);
-check("Gaussian box title reads 'Gaussian'", gaussianBtn.textContent === "Gaussian", gaussianBtn.textContent);
-check("Spot Radius and FWHM sliders both exist, embedded in their boxes", !!spotRadiusSlider && !!gaussianFwhmSlider && circleBox.contains(spotRadiusSlider) && gaussianBox.contains(gaussianFwhmSlider));
-
-check("Circle is selected by default", circleBox.classList.contains("is-active") && circleBox.getAttribute("aria-checked") === "true", { class: circleBox.className, aria: circleBox.getAttribute("aria-checked") });
-check("Gaussian is NOT selected by default", !gaussianBox.classList.contains("is-active") && gaussianBox.getAttribute("aria-checked") === "false");
-check("Spot Radius control starts enabled (Circle is active)", spotRadiusSlider.disabled === false && spotRadiusNumber.disabled === false);
-check("FWHM control starts disabled (Gaussian is inactive)", gaussianFwhmSlider.disabled === true && gaussianFwhmNumber.disabled === true);
-
-check("Spot Radius bounds are [10, 500]", spotRadiusSlider.min === "10" && spotRadiusSlider.max === "500", { min: spotRadiusSlider.min, max: spotRadiusSlider.max });
-check("FWHM bounds match Spot Radius exactly: [10, 500]", gaussianFwhmSlider.min === "10" && gaussianFwhmSlider.max === "500", { min: gaussianFwhmSlider.min, max: gaussianFwhmSlider.max });
-check("Spot Radius defaults to 300", parseFloat(spotRadiusNumber.value) === 300, spotRadiusNumber.value);
-check("FWHM defaults to 300, matching Spot Radius's default", parseFloat(gaussianFwhmNumber.value) === 300, gaussianFwhmNumber.value);
-
-// --- Clicking Gaussian switches selection; only one box is ever active ---
-const plotlyCallCountBeforeShapeSwitch = plotlyCalls.length;
-gaussianBox.dispatchEvent(new window.Event("click"));
-check("Clicking Gaussian activates it and deactivates Circle", gaussianBox.classList.contains("is-active") && !circleBox.classList.contains("is-active"));
-check("Clicking Gaussian sets aria-checked correctly on both boxes", gaussianBox.getAttribute("aria-checked") === "true" && circleBox.getAttribute("aria-checked") === "false");
-check("Switching to Gaussian enables the FWHM control and disables Spot Radius", gaussianFwhmSlider.disabled === false && gaussianFwhmNumber.disabled === false && spotRadiusSlider.disabled === true && spotRadiusNumber.disabled === true);
-check("Switching illumination shape triggers a redraw (new Plotly calls)", plotlyCalls.length > plotlyCallCountBeforeShapeSwitch);
-
-// --- Clicking Circle switches back ---
-circleBox.dispatchEvent(new window.Event("click"));
-check("Clicking Circle re-activates it and deactivates Gaussian", circleBox.classList.contains("is-active") && !gaussianBox.classList.contains("is-active"));
-check("Switching back to Circle re-enables Spot Radius and disables FWHM", spotRadiusSlider.disabled === false && spotRadiusNumber.disabled === false && gaussianFwhmSlider.disabled === true && gaussianFwhmNumber.disabled === true);
-
-// --- Also selectable via keyboard (Enter/Space), matching its role="radio" semantics ---
-gaussianBox.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter" }));
-check("Pressing Enter on the Gaussian box selects it", gaussianBox.classList.contains("is-active"));
-circleBox.dispatchEvent(new window.KeyboardEvent("keydown", { key: " " }));
-check("Pressing Space on the Circle box selects it", circleBox.classList.contains("is-active"));
-
-// --- Default is Circle in Spectroscopy too (it's a shared parameter, not duplicated per-mode) ---
-window.document.getElementById("mode-tab-spectroscopy").dispatchEvent(new window.Event("click"));
-check("Illumination Shape still shows Circle as active after switching to Spectroscopy", circleBox.classList.contains("is-active") && !gaussianBox.classList.contains("is-active"));
-window.document.getElementById("mode-tab-imaging").dispatchEvent(new window.Event("click"));
-
-// --- Reset to Default restores selection to Circle ---
-gaussianBox.dispatchEvent(new window.Event("click"));
-check("Gaussian is active right before testing reset", gaussianBox.classList.contains("is-active"));
-window.document.getElementById("reset-defaults-btn").dispatchEvent(new window.Event("click"));
-check("Reset to Default restores the Illumination Shape selection back to Circle", circleBox.classList.contains("is-active") && !gaussianBox.classList.contains("is-active"));
-check("Reset to Default re-disables the FWHM control (Circle is active again)", gaussianFwhmSlider.disabled === true && spotRadiusSlider.disabled === false);
-
-// --- Physics: makeGaussianIllumination itself (peak amplitude, hard 5-sigma clip) ---
-const GaussPhysics = window.CameraPhysics;
-check("physics.js exports makeGaussianIllumination, GAUSSIAN_FWHM_TO_SIGMA, and GAUSSIAN_CLIP_SIGMAS", typeof GaussPhysics.makeGaussianIllumination === "function" && typeof GaussPhysics.GAUSSIAN_FWHM_TO_SIGMA === "number" && GaussPhysics.GAUSSIAN_CLIP_SIGMAS === 5);
-
-const gRows = 201, gCols = 201, gCenter = 100, gPhotons = 5000, gFwhm = 40;
-const gMap = GaussPhysics.makeGaussianIllumination(gRows, gCols, gPhotons, gFwhm, gCenter, gCenter);
-check("Gaussian's peak (center) value equals the Photons parameter exactly (peak amplitude, not integrated count)", gMap[gCenter * gCols + gCenter] === gPhotons, gMap[gCenter * gCols + gCenter]);
-
-const gSigma = gFwhm * GaussPhysics.GAUSSIAN_FWHM_TO_SIGMA;
-const justInsideClip = Math.floor(GaussPhysics.GAUSSIAN_CLIP_SIGMAS * gSigma) - 1;
-const justOutsideClip = Math.ceil(GaussPhysics.GAUSSIAN_CLIP_SIGMAS * gSigma) + 2;
-check(
-  "A pixel just inside the 5-sigma clip radius is non-zero",
-  gMap[gCenter * gCols + (gCenter + justInsideClip)] > 0,
-  gMap[gCenter * gCols + (gCenter + justInsideClip)]
-);
-check(
-  "A pixel well outside the 5-sigma clip radius is exactly 0 (hard clip, not just numerically negligible)",
-  gMap[Math.min(gRows - 1, gCenter + justOutsideClip) * gCols + gCenter] === 0 || (gCenter + justOutsideClip) >= gRows,
-  { justOutsideClip, gRows }
-);
-
-// FWHM->sigma conversion sanity: value at exactly 1 FWHM/2 off-center should be ~half the peak.
-const halfWidthIdx = Math.round(gFwhm / 2);
-const valueAtHalfWidth = gMap[gCenter * gCols + (gCenter + halfWidthIdx)];
-check(
-  "Value at +/- FWHM/2 from center is close to half the peak amplitude (confirms FWHM, not sigma, drives the width)",
-  Math.abs(valueAtHalfWidth - gPhotons / 2) < gPhotons * 0.05,
-  { valueAtHalfWidth, expected: gPhotons / 2 }
 );
 
 console.log("\n" + (failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`));
