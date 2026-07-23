@@ -4,33 +4,6 @@ All notable changes to PhotonBench are documented here.
 
 PhotonBench is in **pre-release** (version `0.y.z`, per [Semantic Versioning](https://semver.org/)). It is still in an active feedback-gathering phase and is not yet intended for broad, general release - expect things to keep changing.
 
-## [0.4.0] - 2026-07-22
-
-New Spectroscopy mode: a full ROI/binning-driven calculated spectrum with an optional wavelength axis, plus completed Info content across every panel.
-
-### Added
-- **Splash screen**: a full-viewport landing screen shown on every page load, with a light-pulse-waveform graphic and the PhotonBench wordmark on the left and three mode buttons (Imaging, Spectroscopy, SNR Only) on the right. Picking a mode hides the splash and jumps straight into that tab.
-- **SNR Only mode**: a new top-level tab giving a focused, chart-only view of the SNR and Noise Contributions panels side by side, plus the Camera Sensitivity Comparison panel below - the same live panels used in Imaging mode, borrowed into a dedicated layout rather than duplicated.
-- **Spectroscopy mode**: a new top-level tab alongside Imaging and SNR Only, reusing the live Camera Simulator panel and adding a Calculated Spectrum panel and a Region of Interest & Spectroscopy Controls panel.
-- **Full Sensor Vertical Bin / Custom ROI**: the Calculated Spectrum bins either the entire sensor height or a user-defined ROI (Top, Bottom, and a linked Height field that anchors to the ROI's bottom pixel) down to a single row, using the same per-camera-type binning rules as the rest of the simulation.
-- **Horizontal Binning** in Spectroscopy, mirrored from (and linked to) the primary Camera Parameters panel, reducing point count and improving SNR along the spectrum's x-axis.
-- **Dispersion Model**: a generic, non-proprietary Czerny-Turner grating model mapping native pixel position to wavelength, with adjustable Focal Length, Center Wavelength, Grating Groove Density (l/mm), Slit Width, and f-number. A Pixel/Wavelength toggle on the Calculated Spectrum switches its x-axis, falling back to Pixel when the current geometry has no physical solution.
-- **SNR vs. ROI Height** chart: a static curve showing how SNR scales with vertical bin height across the full sensor height range, reflecting the current photon level, camera type, and Horizontal Binning, with a red dashed line marking the current effective bin height.
-- Info panel content completed for the Calculated Spectrum and Region of Interest & Spectroscopy Controls panels - every panel in the app now has real Info content (none left as "coming soon" placeholders).
-- **Wavelength Range / Resolution** readouts: a collapsed-by-default dropdown off the "Dispersion Model" header showing the span of wavelengths the sensor's native pixels cover (Wavelength Range) and the standard monochromator bandpass - reciprocal linear dispersion x Slit Width (Resolution) - both recomputed live from the Dispersion Model settings, falling back to "-" on an invalid grating geometry.
-- **Export** button on the SNR vs. ROI Height chart, downloading a PNG plus a Height/SNR CSV with the usual parameter metadata header, plus the current effective bin height (where the chart's red dashed line sits).
-
-### Changed
-- sCMOS default Sensitivity raised to 1.8 e-/ADU.
-- Sensor Width's minimum lowered from 1024 to 500 px.
-- Calculated Spectrum's chart no longer repeats its own title in the plot area, since the panel header already carries it.
-- App header's contact email updated.
-- Main Info panel's overview text now describes all three tabs (Imaging, Spectroscopy, SNR Only) instead of just the original single-view simulation.
-
-### Fixed
-- Reset to Default now also resets Spectroscopy's ROI back to full sensor height and the Calculated Spectrum's x-axis back to Pixel, previously left stale after a reset.
-- **EM Gain noise model corrected.** The previous implementation approximated EM Gain by substituting an "effective QE" - (QE / 2) x EM Gain - into the ordinary no-EM-Gain formulas. That incorrectly let shot noise scale up right along with the artificially boosted signal, and left the signal itself modified by EM Gain when it shouldn't be. The model now applies the physically correct treatment everywhere (the live simulated frame and the analytic SNR/Noise Contributions curves alike): signal (photons x QE) is completely unchanged by EM Gain; shot noise and dark current noise both pick up the gain register's excess noise factor (F^2 = 2, fixed, not user-adjustable); and read noise is divided by EM Gain outright, with no cap or floor.
-
 ## [0.3.0] - 2026-07-20
 
 Major feature work since 0.2.0: new camera types, pixel binning, and a reworked illumination model, plus SNR/histogram display upgrades, a reorganized Parameters panel, and general UI polish and bug fixes.

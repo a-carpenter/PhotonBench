@@ -51,12 +51,9 @@ window.HTMLCanvasElement.prototype.getContext = function () {
     moveTo: () => {},
     lineTo: () => {},
     stroke: () => {},
-    fillRect: () => {},
-    strokeRect: () => {},
     setLineDash: () => {},
     set lineWidth(v) {},
     set strokeStyle(v) {},
-    set fillStyle(v) {},
   };
 };
 window.HTMLCanvasElement.prototype.toDataURL = function () {
@@ -90,7 +87,6 @@ window.clearInterval = () => {};
 // --- Load application scripts ---
 const scriptFiles = [
   "src/physics.js",
-  "src/dispersion.js",
   "src/colormap.js",
   "src/canvas.js",
   "src/charts.js",
@@ -349,112 +345,6 @@ check(
     digitalClippedAdu[0]
   );
 
-  // --- EM Gain noise model (CCD-only): signal x QE UNCHANGED, shot/dark
-  // noise x fixed F^2=2 excess noise factor, read noise / EM Gain (raw
-  // division, no cap/floor) - driven directly through Physics.simulateBinnedFrame
-  // and Physics.analyticNoise, independent of any main.js/UI wiring. ---
-  const emGainMeanParams = {
-    exposureTime: 1, qe: 0.5, darkCurrent: 0, readNoise: 0.001, offset: 0,
-    fullWell: 1e9, registerWellDepth: 1e9, gain: 1, bitDepth: 16,
-  };
-  const emPhotonMap = new Float64Array(nativeRows * nativeCols).fill(1000);
-
-  // EM Gain should not shift the AVERAGE signal (only widen its spread) -
-  // averaged over many trials, since both the excess-noise perturbation and
-  // the (rescaled) read-noise draw are zero-mean Gaussians, so they wash out
-  // on average even though any single draw differs. (A single frozen draw
-  // under a fixed Math.random stub isn't a valid way to check this: the
-  // added Gaussian terms use a *different* std between the EM/no-EM cases,
-  // so even a "deterministic" z from Box-Muller lands at a different final
-  // value - the averaging approach below is the correct check.)
-  function sampleMeanEmGain(emGainEnabled, emGain) {
-    const p = { ...emGainMeanParams, emGainEnabled, emGain };
-    let sum = 0;
-    for (let t = 0; t < trials; t++) {
-      const { signalElectrons } = Physics.simulateBinnedFrame(emPhotonMap, nativeRows, nativeCols, p, 1, 1, "charge");
-      sum += signalElectrons[0];
-    }
-    return sum / trials;
-  }
-  const noEmMean = sampleMeanEmGain(false, 1);
-  const emMean = sampleMeanEmGain(true, 50);
-  check(
-    "EM Gain does NOT shift the average/expected signal (only widens its spread)",
-    Math.abs(noEmMean - emMean) / noEmMean < 0.05,
-    { noEmMean, emMean, relativeDiff: Math.abs(noEmMean - emMean) / noEmMean }
-  );
-
-  // Shot noise variance should roughly DOUBLE (F^2=2) with EM Gain enabled,
-  // isolated from dark/read noise (dark=0, read~0 in emGainMeanParams).
-  function sampleVarianceEmGain(emGainEnabled, emGain) {
-    const p = { ...emGainMeanParams, emGainEnabled, emGain };
-    const values = [];
-    for (let t = 0; t < trials; t++) {
-      const { signalElectrons } = Physics.simulateBinnedFrame(emPhotonMap, nativeRows, nativeCols, p, 1, 1, "charge");
-      values.push(signalElectrons[0]);
-    }
-    const mean = values.reduce((a, b) => a + b, 0) / values.length;
-    return values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
-  }
-  const noEmVar = sampleVarianceEmGain(false, 1);
-  const emVarAtGain1 = sampleVarianceEmGain(true, 1);
-  check(
-    "EM Gain applies the F^2=2 excess noise factor to shot noise even at 1x gain (variance roughly doubles)",
-    emVarAtGain1 > noEmVar * 1.6 && emVarAtGain1 < noEmVar * 2.4,
-    { noEmVar, emVarAtGain1, ratio: emVarAtGain1 / noEmVar }
-  );
-
-  // Read noise, isolated (qe=0, darkCurrent=0): its variance should shrink
-  // by ~1/emGain^2 once EM Gain is applied (10x gain -> ~100x smaller
-  // variance), since it's divided by EM Gain outright, with no cap or floor.
-  const readOnlyParams = {
-    exposureTime: 1, qe: 0, darkCurrent: 0, readNoise: 50, offset: 250,
-    fullWell: 1e9, registerWellDepth: 1e9, gain: 1, bitDepth: 16,
-  };
-  const zeroPhotonMap = new Float64Array(nativeRows * nativeCols);
-  function sampleVarianceReadOnly(emGainEnabled, emGain) {
-    const p = { ...readOnlyParams, emGainEnabled, emGain };
-    const values = [];
-    for (let t = 0; t < trials; t++) {
-      const { signalElectrons } = Physics.simulateBinnedFrame(zeroPhotonMap, nativeRows, nativeCols, p, 1, 1, "charge");
-      values.push(signalElectrons[0]);
-    }
-    const mean = values.reduce((a, b) => a + b, 0) / values.length;
-    return values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
-  }
-  const readVarNoEm = sampleVarianceReadOnly(false, 1);
-  const readVarEm10 = sampleVarianceReadOnly(true, 10);
-  check(
-    "Read noise is divided by EM Gain: variance shrinks by ~1/emGain^2 (10x gain -> ~100x smaller variance)",
-    readVarEm10 < readVarNoEm / 50 && readVarEm10 > readVarNoEm / 200,
-    { readVarNoEm, readVarEm10, ratio: readVarNoEm / readVarEm10 }
-  );
-
-  // analyticNoise() is a pure formula (no randomness) - check it matches the
-  // spec exactly rather than just statistically.
-  const analyticEmParams = {
-    exposureTime: 1, qe: 0.9, darkCurrent: 0.01, readNoise: 3, fullWell: 1e9,
-    emGainEnabled: true, emGain: 20,
-  };
-  const analyticEmStats = Physics.analyticNoise([500], analyticEmParams);
-  const expectedAnalyticSignal = 500 * 0.9; // UNCHANGED by EM Gain
-  const expectedAnalyticShot = Math.sqrt(2 * expectedAnalyticSignal); // F^2 = 2
-  const expectedAnalyticDark = Math.sqrt(2 * 0.01 * 1); // F^2 = 2
-  const expectedAnalyticRead = 3 / 20; // readNoise / emGain
-  check(
-    "analyticNoise() with EM Gain: signal unchanged, shot/dark x F^2=2, read/emGain - exact match",
-    Math.abs(analyticEmStats.signal_e[0] - expectedAnalyticSignal) < 1e-9
-    && Math.abs(analyticEmStats.noise_shot[0] - expectedAnalyticShot) < 1e-9
-    && Math.abs(analyticEmStats.noise_dark[0] - expectedAnalyticDark) < 1e-9
-    && Math.abs(analyticEmStats.noise_read[0] - expectedAnalyticRead) < 1e-9,
-    {
-      signal: analyticEmStats.signal_e[0], expectedSignal: expectedAnalyticSignal,
-      shot: analyticEmStats.noise_shot[0], expectedShot: expectedAnalyticShot,
-      dark: analyticEmStats.noise_dark[0], expectedDark: expectedAnalyticDark,
-      read: analyticEmStats.noise_read[0], expectedRead: expectedAnalyticRead,
-    }
-  );
-
   // --- Canvas stays at native sensor size when binning is active (verifying main.js wiring, not just physics.js) ---
   const binHorizSelect = window.document.getElementById("bin-horizontal-select");
   const binVertSelect = window.document.getElementById("bin-vertical-select");
@@ -532,18 +422,17 @@ check(
   );
 
   // ============================================================================
-  // 9. SNR panel "Modified SNR" trace obeys the correct scaling law per
-  // camera type. analyticNoise() is a pure formula (no Math.random
-  // involved), so these are checked with exact equality rather than a
-  // statistical sample.
+  // 9. SNR panel "Binned SNR" trace obeys the correct scaling law per camera
+  // type. analyticNoise() is a pure formula (no Math.random involved), so
+  // these are checked with exact equality rather than a statistical sample.
   // ============================================================================
   function lastSNRCall() {
     return plotlyCalls.filter((c) => c.divId === "snr-chart").pop();
   }
 
   // sCMOS: every noise term (shot, dark, read) scales by sqrt(n) uniformly
-  // for independent/digital readout, so Modified SNR should be EXACTLY
-  // sqrt(n) times the Single Pixel baseline, at every point on the curve.
+  // for independent/digital readout, so Binned SNR should be EXACTLY sqrt(n)
+  // times the Single Pixel baseline, at every point on the curve.
   window.document.getElementById("sensor-type-scmos-btn").dispatchEvent(new window.Event("click"));
   const scmosBinningCheckbox = window.document.getElementById("binning-checkbox");
   scmosBinningCheckbox.checked = true;
@@ -558,7 +447,7 @@ check(
   const scmosActive = scmosCall.traces[3].y;
   const sqrtN = Math.sqrt(4);
   check(
-    "sCMOS Modified SNR trace equals sqrt(n) x the Single Pixel baseline (n=4 bin)",
+    "sCMOS Binned SNR trace equals sqrt(n) x the Single Pixel baseline (n=4 bin)",
     scmosActive.every((v, i) => Math.abs(v - scmosBaseline[i] * sqrtN) < 1e-6 * Math.max(1, Math.abs(scmosBaseline[i] * sqrtN))),
     { sampleBaseline: scmosBaseline[100], sampleActive: scmosActive[100], expected: scmosBaseline[100] * sqrtN }
   );
@@ -567,9 +456,8 @@ check(
   scmosBinningCheckbox.dispatchEvent(new window.Event("change"));
 
   // CCD: shot/dark noise scale by sqrt(n), but read noise does NOT scale (a
-  // single read per bin) - the Modified SNR trace should match the
-  // quadrature combination formula, NOT a flat sqrt(n) (or n) multiplier of
-  // the baseline.
+  // single read per bin) - the Binned SNR trace should match the quadrature
+  // combination formula, NOT a flat sqrt(n) (or n) multiplier of the baseline.
   window.document.getElementById("sensor-type-ccd-btn").dispatchEvent(new window.Event("click"));
   const ccdBinningCheckbox = window.document.getElementById("binning-checkbox");
   ccdBinningCheckbox.checked = true;
@@ -619,12 +507,12 @@ check(
   });
 
   check(
-    "CCD Modified SNR trace matches the quadrature-combine formula (shot/dark scale sqrt(n), read noise does not scale)",
+    "CCD Binned SNR trace matches the quadrature-combine formula (shot/dark scale sqrt(n), read noise does not scale)",
     ccdActiveSnr.every((v, i) => Math.abs(v - expectedCcdActive[i]) < 1e-6 * Math.max(1, Math.abs(expectedCcdActive[i]))),
     { sampleActual: ccdActiveSnr[100], sampleExpected: expectedCcdActive[100] }
   );
   check(
-    "CCD Modified SNR differs from a naive flat sqrt(n) multiply of the baseline (confirms it's not just a scalar)",
+    "CCD Binned SNR differs from a naive flat sqrt(n) multiply of the baseline (confirms it's not just a scalar)",
     !ccdActiveSnr.every((v, i) => Math.abs(v - ccdBaselineSnr[i] * Math.sqrt(nCcd)) < 1e-6 * Math.max(1, Math.abs(ccdBaselineSnr[i])))
   );
 

@@ -7,90 +7,19 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Splash / landing screen: shown full-viewport on every page load, on top
-       of the app underneath (which initializes normally, just hidden). Picking
-       a mode button hides the splash and jumps straight into that tab - see
-       initSplashScreen() in main.js. One-way: there is no path back to the
-       splash from inside the app. -->
-  <div id="splash-screen" class="splash-screen">
-    <div class="splash-graphic">
-      <svg viewBox="0 0 480 220" class="splash-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PhotonBench">
-        <defs>
-          <linearGradient id="splashGlow" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stop-color="#185fa5" stop-opacity="0" />
-            <stop offset="50%" stop-color="#4fd6ff" stop-opacity="0.9" />
-            <stop offset="100%" stop-color="#185fa5" stop-opacity="0" />
-          </linearGradient>
-        </defs>
-
-        <line x1="10" y1="140" x2="470" y2="140" stroke="#2a3348" stroke-width="1" />
-
-        <path d="M10,110 Q30,80 50,110 T90,110 T130,110 T170,110 T210,110 T250,110 T290,110 T330,110 T370,110 T410,110 T450,110 T470,110"
-              fill="none" stroke="#22304a" stroke-width="1.5" />
-
-        <path d="M10,110 C110,110 140,25 240,25 C340,25 370,110 470,110"
-              fill="none" stroke="url(#splashGlow)" stroke-width="2" opacity="0.8" />
-        <path d="M10,110 C110,110 140,195 240,195 C340,195 370,110 470,110"
-              fill="none" stroke="url(#splashGlow)" stroke-width="2" opacity="0.8" />
-
-        <path d="
-          M140,110 C144,80 148,80 152,110
-          C156,140 160,140 164,110
-          C168,68 172,68 176,110
-          C180,152 184,152 188,110
-          C192,60 196,60 200,110
-          C204,160 208,160 212,110
-          C216,52 220,52 224,110
-          C228,168 232,168 236,110
-          C240,45 244,45 248,110
-          C252,175 256,175 260,110
-          C264,52 268,52 272,110
-          C276,168 280,168 284,110
-          C288,60 292,60 296,110
-          C300,160 304,160 308,110
-          C312,68 316,68 320,110
-          C324,152 328,152 332,110
-          C336,80 340,80 344,110
-        " fill="none" stroke="#eaffff" stroke-width="1.6" />
-
-        <ellipse cx="240" cy="110" rx="160" ry="52" fill="#070a12" opacity="0.18" />
-        <ellipse cx="240" cy="110" rx="125" ry="44" fill="#070a12" opacity="0.22" />
-        <ellipse cx="240" cy="110" rx="90" ry="35" fill="#070a12" opacity="0.26" />
-        <ellipse cx="240" cy="110" rx="60" ry="27" fill="#070a12" opacity="0.22" />
-
-        <g stroke="#3a4358" stroke-width="1">
-          <line x1="90" y1="137" x2="90" y2="144" />
-          <line x1="140" y1="137" x2="140" y2="144" />
-          <line x1="240" y1="137" x2="240" y2="144" />
-          <line x1="290" y1="137" x2="290" y2="144" />
-          <line x1="340" y1="137" x2="340" y2="144" />
-        </g>
-        <text x="10" y="158" fill="#6b7690" font-size="10" font-family="monospace">t</text>
-
-        <text x="240" y="110" text-anchor="middle" dominant-baseline="middle" font-family="-apple-system, 'Segoe UI', sans-serif">
-          <tspan fill="#e8ecf5" font-size="34" font-weight="400" letter-spacing="0.5">Photon</tspan><tspan fill="#ffffff" font-size="34" font-weight="800" letter-spacing="0.5">Bench</tspan>
-        </text>
-        <text x="240" y="180" text-anchor="middle" fill="#7f8bab" font-size="11" letter-spacing="0.5">A Camera Simulation Tool</text>
-      </svg>
-    </div>
-
-    <div class="splash-buttons" role="group" aria-label="Choose a simulator mode">
-      <button type="button" class="splash-mode-btn" id="splash-btn-imaging" data-mode="imaging">Imaging</button>
-      <button type="button" class="splash-mode-btn" id="splash-btn-spectroscopy" data-mode="spectroscopy">Spectroscopy</button>
-      <button type="button" class="splash-mode-btn" id="splash-btn-snr" data-mode="snr">SNR Only</button>
-    </div>
-  </div>
-
   <header class="app-titlebar">
     <div class="app-title-group">
       <h1>PhotonBench</h1>
       <span class="app-subtitle">A Camera Simulation Tool</span>
-      <span class="app-version" title="Pre-release - see CHANGELOG.md for version history">v0.4.0</span>
+      <span class="app-version" title="Pre-release - see CHANGELOG.md for version history">v0.3.0</span>
     </div>
     <div class="app-header-right">
+      <!-- Spectroscopy tab removed for this intermediate release - it was
+           only ever a placeholder layout with no working simulation behind
+           it yet. It'll come back once the vertical-binning spectrum and
+           the image simulator's region-of-interest selector exist. -->
       <nav class="mode-tabs" role="tablist" aria-label="Simulator mode">
         <button type="button" class="mode-tab is-active" id="mode-tab-imaging" role="tab" aria-selected="true" data-mode="imaging">Imaging</button>
-        <button type="button" class="mode-tab" id="mode-tab-spectroscopy" role="tab" aria-selected="false" data-mode="spectroscopy">Spectroscopy</button>
         <button type="button" class="mode-tab" id="mode-tab-snr" role="tab" aria-selected="false" data-mode="snr">SNR Only</button>
       </nav>
       <button id="info-btn" type="button" class="btn btn-sm icon-btn" aria-label="Info" title="Info">
@@ -211,27 +140,6 @@
     </div>
   </div>
 
-  <div id="panel-spectrum-info-overlay" class="info-overlay" hidden>
-    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="panel-spectrum-info-modal-content">
-      <button id="panel-spectrum-info-close-btn" class="info-close" aria-label="Close">&times;</button>
-      <div id="panel-spectrum-info-modal-content" class="info-text">
-        <p>The simulated spectrum is calculated by vertically binning the sensor's illuminated rows into a single row of ADU values, using the same signal and noise model as the Camera Simulator panel. The same binning rules for your selected camera type (CCD, sCMOS, InGaAs) apply here as everywhere else in the simulation. When Full Sensor Vertical Bin is checked, every row on the sensor contributes; when unchecked, only the rows inside the Custom ROI (Top to Bottom) are combined. Horizontal Binning, if active, further combines neighboring columns, reducing the number of points along the x-axis and improving each point's SNR.</p>
-        <p>The toggle in the header switches the x-axis between Pixel (native column index) and Wavelength (nm), using a generic Czerny-Turner grating dispersion model driven by the Dispersion Model parameters in the panel below. Wavelength is always computed from each point's native pixel center, so Horizontal Binning changes the point spacing but not the underlying wavelength mapping. If the current Dispersion Model settings describe a grating geometry with no physical solution (e.g. too high a groove density for the chosen center wavelength and angle), the chart falls back to the Pixel axis until the parameters are adjusted.</p>
-      </div>
-    </div>
-  </div>
-
-  <div id="panel-spectro-roi-info-overlay" class="info-overlay" hidden>
-    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="panel-spectro-roi-info-modal-content">
-      <button id="panel-spectro-roi-info-close-btn" class="info-close" aria-label="Close">&times;</button>
-      <div id="panel-spectro-roi-info-modal-content" class="info-text">
-        <p><strong>ROI &amp; Binning</strong> — Region of Interest settings including Full Sensor Vertical Bin, Custom ROI settings, and Horizontal Binning (linked to primary parameter panel).</p>
-        <p><strong>Dispersion Model</strong> — Input parameters for a generic Czerny-Turner dispersion model used to map the pixel axis onto a wavelength axis.</p>
-        <p><strong>SNR vs. ROI Height</strong> — SNR as a function of the ROI height to illustrate how SNR can scale for flat field illuminated vertical bin. ROI height is linked to the image sensor height used in the simulation.</p>
-      </div>
-    </div>
-  </div>
-
   <div class="app-grid">
 
     <!-- Left column: Box 6, parameters. Scrolls independently if it doesn't
@@ -299,7 +207,7 @@
           <div class="panel-controls">
             <div class="sensor-dims">
               <label for="sensor-width-input">W</label>
-              <input type="number" id="sensor-width-input" class="dim-input" min="500" max="5000" step="1" value="1024" />
+              <input type="number" id="sensor-width-input" class="dim-input" min="1024" max="5000" step="1" value="1024" />
               <span class="dims-x">&times;</span>
               <label for="sensor-height-input">H</label>
               <input type="number" id="sensor-height-input" class="dim-input" min="1" max="5000" step="1" value="1024" />
@@ -406,221 +314,6 @@
     </div>
     <!-- /#mode-imaging -->
 
-    <!-- Spectroscopy mode: Calculated Spectrum and Image Simulator as two
-         equal-size panels side by side (tops aligned with Box 6's top, same
-         as every other mode), with a Region of Interest & Spectroscopy
-         Controls panel spanning the full width below them (reserved for
-         later - not wired up yet). The two top panels are only required to
-         be equal size, not literally square, so this is the same reliable
-         equal-height-row grid pattern already used by SNR Only below - no
-         aspect-ratio or JS sizing needed.
-
-         Image Simulator is the SAME live Box 1 (#panel-1) shown in Imaging
-         mode, not a separate copy - #spectro-slot-image is just a landing
-         spot (display:contents, like the SNR Only slots) that main.js moves
-         the real #panel-1 into and back out of on tab switch, so its canvas,
-         Play/Pause, and sensor-size controls all stay in sync automatically
-         with Imaging mode, and there's only ever one instance of the sensor
-         canvas in the DOM.
-
-         Calculated Spectrum's Pixel-vs-Intensity chart is live now too - it
-         redraws every frame in main.js's drawLiveFrame() using Full Vertical
-         Bin (the entire sensor height summed into one row, one intensity
-         value per column), independent of whatever Vertical Bin factor the
-         Image Simulator itself is using - see the comment above that call
-         for the full explanation. -->
-    <div id="mode-spectroscopy" class="mode-view" data-mode="spectroscopy">
-      <section class="panel" id="panel-spectrum">
-        <div class="panel-header">
-          <h2>Calculated Spectrum</h2>
-          <div class="panel-controls">
-            <!-- X-axis toggle: Pixel (raw column index, the original
-                 behavior) vs Wavelength (nm, computed live from the
-                 Dispersion Model controls in the ROI panel via
-                 dispersion.js's pixelToWavelength() - see main.js). Mapped
-                 against NATIVE pixels regardless of Horizontal Bin - see
-                 dispersion.js's own header comment. -->
-            <div class="spectrum-xaxis-tabs" id="spectrum-xaxis-tabs" role="group" aria-label="Calculated Spectrum x-axis">
-              <button type="button" class="btn btn-sm spectrum-xaxis-btn is-active" id="spectrum-xaxis-pixel-btn">Pixel</button>
-              <button type="button" class="btn btn-sm spectrum-xaxis-btn" id="spectrum-xaxis-wavelength-btn">Wavelength</button>
-            </div>
-            <button id="panel-spectrum-info-btn" type="button" class="btn btn-sm icon-btn" aria-label="About this panel" title="About this panel">
-              <svg class="icon-info" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.4" r="1.1" fill="currentColor"/><rect x="9.05" y="9.2" width="1.9" height="6" rx="0.6" fill="currentColor"/></svg>
-            </button>
-          </div>
-        </div>
-        <div class="panel-body">
-          <div id="spectrum-chart" class="chart"></div>
-        </div>
-      </section>
-
-      <div class="mode-slot" id="spectro-slot-image"></div>
-
-      <section class="panel" id="panel-spectro-roi">
-        <div class="panel-header">
-          <h2>Region of Interest &amp; Spectroscopy Controls</h2>
-          <div class="panel-controls">
-            <button id="panel-spectro-roi-info-btn" type="button" class="btn btn-sm icon-btn" aria-label="About this panel" title="About this panel">
-              <svg class="icon-info" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.4" r="1.1" fill="currentColor"/><rect x="9.05" y="9.2" width="1.9" height="6" rx="0.6" fill="currentColor"/></svg>
-            </button>
-          </div>
-        </div>
-        <!-- Three columns, separated by thin vertical rules (see
-             .panel-body-spectro-controls/.spectro-col in style.css): left is
-             Binning + ROI, middle is a scrolling list of the Dispersion
-             Model parameters, right is the SNR vs. ROI Height plot. -->
-        <div class="panel-body panel-body-spectro-controls">
-          <div class="spectro-col spectro-col-binning">
-            <h3>ROI &amp; Binning</h3>
-            <!-- Full Sensor Vertical Bin: checked (default) means the
-                 Calculated Spectrum bins the ENTIRE sensor height, and the
-                 ROI box is forced/snapped to span the full sensor height too
-                 (its inputs and on-canvas dragging are disabled while this
-                 is checked, since the box can't be moved independently of
-                 it). Unchecking it hands control back to the ROI - the
-                 spectrum then only bins the rows inside [ROI Top, ROI
-                 Bottom], and the box becomes editable/draggable again. See
-                 main.js's setFullVerticalBin(). -->
-            <label class="binning-checkbox-label" id="full-vbin-label" for="full-vbin-checkbox">
-              <input type="checkbox" id="full-vbin-checkbox" checked />
-              Full Sensor Vertical Bin
-            </label>
-
-            <h4 class="subsection-label">Custom ROI</h4>
-
-            <!-- ROI Top/Bottom: plain clamped number inputs (native pixel
-                 row, inclusive), same pattern as the sensor W/H inputs in
-                 Box 1's header - a form-factor-style value you'd type or
-                 drag, not slide. Bounds are the current sensor's own
-                 top/bottom row, so main.js updates their min/max whenever
-                 the sensor is resized. Kept in sync with the draggable ROI
-                 box drawn on top of the Image Simulator's canvas (see
-                 main.js's ROI drag handlers) - dragging an edge there
-                 updates these, and typing a value here moves the box.
-                 Disabled while Full Sensor Vertical Bin (above) is checked,
-                 since the box is locked to the full sensor height. -->
-            <!-- Labels intentionally swapped vs. the underlying ids/params:
-                 #roi-top-input (params.roiTop, the smaller native row) is
-                 labeled "ROI Bottom", and #roi-bottom-input (params.roiBottom,
-                 the larger native row) is labeled "ROI Top" - requested so
-                 the larger value reads as "Top" rather than "Bottom". Purely
-                 a display-label swap: ids, params.roiTop/roiBottom, drag
-                 behavior, and clamping logic are all unchanged. -->
-            <!-- Height sits in the same row as Top/Bottom (3-column grid,
-                 see .roi-controls in style.css) rather than a separate row
-                 below - keeps the left column compact so Horizontal Binning
-                 stays in view without scrolling. It's the difference between
-                 the ROI Top and ROI Bottom pixel positions (params.roiBottom
-                 - params.roiTop) - a convenience field so the user doesn't
-                 have to do that subtraction themselves. Anchored to the ROI
-                 BOTTOM pixel (params.roiTop, the smaller native row - see the
-                 label-swap note above): editing Height keeps that anchored
-                 and moves the ROI TOP pixel (params.roiBottom) to match, same
-                 as the user dragging/typing the Top edge directly. See
-                 main.js's setROIHeight(). -->
-            <div class="roi-controls" id="roi-controls">
-              <div class="param-control">
-                <label for="roi-top-input">ROI Bottom (px)</label>
-                <input type="number" id="roi-top-input" class="dim-input" min="0" step="1" />
-              </div>
-              <div class="param-control">
-                <label for="roi-bottom-input">ROI Top (px)</label>
-                <input type="number" id="roi-bottom-input" class="dim-input" min="0" step="1" />
-              </div>
-              <div class="param-control roi-height-control">
-                <label for="roi-height-input">Height (px)</label>
-                <input type="number" id="roi-height-input" class="dim-input" min="1" step="1" />
-              </div>
-            </div>
-
-            <!-- Binning is mirrored here from Camera Parameters (see
-                 main.js's createBinningControls/syncBinningControls) - same
-                 params.binHorizontal/binVertical, same checkbox+select UI,
-                 just a second copy so every control relevant to the spectrum
-                 lives in one place without leaving the Spectroscopy tab.
-                 Changing either copy updates the other automatically. -->
-            <div id="spectro-binning-container"></div>
-          </div>
-
-          <div class="spectro-col spectro-col-dispersion">
-            <!-- Dispersion Model (general_spectrometer_model.py port): the
-                 generic, non-proprietary Czerny-Turner grating model used to
-                 map the Calculated Spectrum's x-axis from raw pixel index to
-                 wavelength (toggled via the Pixel/Wavelength buttons on that
-                 panel's header). Mapping is against NATIVE pixels/sensor
-                 width - Horizontal Bin still just reduces point count and
-                 improves SNR the same way it always has, it doesn't change
-                 the wavelength math itself. See main.js's
-                 updateSpectrumIfActive() and dispersion.js's
-                 pixelToWavelength(). A scrolling list (.params-scroll-area,
-                 same pattern as Box 6's Camera/Experimental Parameters) so
-                 it doesn't force the whole panel taller as more controls are
-                 added later. -->
-            <!-- Wavelength Range / Resolution are computed results, not
-                 controls - tucked behind a collapsed-by-default dropdown off
-                 the section header so they don't eat into this column's
-                 limited vertical space until the user actually wants them.
-                 Reuses the same collapsible-group/chevron mechanism as Box
-                 6's Experimental/Camera Parameters sections (setupCollapsibleGroup()
-                 in main.js), just starting collapsed instead of expanded. -->
-            <div class="dispersion-results-group collapsible-group is-collapsed" id="dispersion-results-group">
-              <button type="button" class="controls-group-header" id="dispersion-results-toggle" aria-expanded="false" aria-controls="dispersion-results">
-                <h3>Dispersion Model</h3>
-                <svg class="icon-chevron" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" focusable="false"><path d="M2.5 4.2 L6 7.8 L9.5 4.2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
-              <div id="dispersion-results" class="dispersion-results">
-                <!-- Wavelength Range: the span of wavelengths the sensor's own
-                     native pixel columns cover at the current Dispersion Model
-                     settings (pixel 0 to pixel sensorWidth-1) - recomputed live
-                     by updateWavelengthRangeDisplay() in main.js. -->
-                <div id="wavelength-range-display" class="wavelength-range-display">Wavelength Range: —</div>
-                <!-- Resolution (bandpass): reciprocal linear dispersion (nm/mm,
-                     at the center wavelength) x Slit Width (mm) - the standard
-                     monochromator bandpass formula, computed from the same
-                     Dispersion Model settings as Wavelength Range above. See
-                     updateWavelengthRangeDisplay() in main.js. -->
-                <div id="resolution-display" class="wavelength-range-display">Resolution: —</div>
-              </div>
-            </div>
-            <!-- Dispersion Model (general_spectrometer_model.py port): the
-                 generic, non-proprietary Czerny-Turner grating model used to
-                 map the Calculated Spectrum's x-axis from raw pixel index to
-                 wavelength (toggled via the Pixel/Wavelength buttons on that
-                 panel's header). Mapping is against NATIVE pixels/sensor
-                 width - Horizontal Bin still just reduces point count and
-                 improves SNR the same way it always has, it doesn't change
-                 the wavelength math itself. See main.js's
-                 updateSpectrumIfActive() and dispersion.js's
-                 pixelToWavelength(). A scrolling list (.params-scroll-area,
-                 same pattern as Box 6's Camera/Experimental Parameters) so
-                 it doesn't force the whole panel taller as more controls are
-                 added later. -->
-            <div class="params-scroll-area">
-              <div id="dispersion-controls" class="controls-list"></div>
-            </div>
-          </div>
-
-          <!-- SNR vs. ROI Height: a static (analytic, non-Monte-Carlo) curve
-               of Signal-to-Noise as a function of vertically-binned height,
-               at the current single-pixel photon level and Horizontal Bin
-               factor - scaled per the current camera type's own binning
-               rules (charge/CCD vs digital/sCMOS-InGaAs - see
-               combineForBinning() in main.js, reused from the existing SNR
-               panel). X-axis is pinned to [1, sensor height]; the dashed red
-               line marks the height actually being binned for the
-               Calculated Spectrum right now (the full sensor height when
-               Full Sensor Vertical Bin is checked, otherwise the Custom
-               ROI's Height). See main.js's updateHeightSNRChart(). -->
-          <div class="spectro-col spectro-col-snr-height" id="spectro-col-snr-height">
-            <div class="height-snr-header">
-              <button id="export-height-snr-btn" type="button" class="btn btn-sm">Export</button>
-            </div>
-            <div id="height-snr-chart" class="chart height-snr-chart"></div>
-          </div>
-        </div>
-      </section>
-    </div>
-
     <!-- SNR Only mode: SNR curve (top left) and Noise Contributions (top
          right) at the same height, with the Camera Sensitivity Comparison
          panel spanning the full width below both of them. The three
@@ -641,7 +334,6 @@
 
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="src/physics.js"></script>
-  <script src="src/dispersion.js"></script>
   <script src="src/colormap.js"></script>
   <script src="src/canvas.js"></script>
   <script src="src/charts.js"></script>

@@ -52,22 +52,12 @@ window.HTMLCanvasElement.prototype.getContext = function () {
     moveTo: (x, y) => rowIndicatorCalls.push({ fn: "moveTo", x, y }),
     lineTo: (x, y) => rowIndicatorCalls.push({ fn: "lineTo", x, y }),
     stroke: () => {},
-    // fillRect/strokeRect are only used by drawROIBox (the row indicator
-    // line and everything checked against rowIndicatorCalls at the top of
-    // this file only ever runs while on the Imaging tab, before Spectroscopy
-    // mode - and its ROI box - are ever entered, so sharing this array is
-    // safe and avoids a second parallel stub).
-    fillRect: (x, y, w, h) => rowIndicatorCalls.push({ fn: "fillRect", x, y, w, h }),
-    strokeRect: (x, y, w, h) => rowIndicatorCalls.push({ fn: "strokeRect", x, y, w, h }),
     setLineDash: (segments) => rowIndicatorCalls.push({ fn: "setLineDash", segments }),
     set lineWidth(v) {
       rowIndicatorCalls.push({ fn: "lineWidth", value: v });
     },
     set strokeStyle(v) {
       rowIndicatorCalls.push({ fn: "strokeStyle", value: v });
-    },
-    set fillStyle(v) {
-      rowIndicatorCalls.push({ fn: "fillStyle", value: v });
     },
   };
 };
@@ -105,7 +95,6 @@ window.alert = (msg) => alertCalls.push(msg);
 // --- Load application scripts, in the same order as index.html, into the jsdom window ---
 const scriptFiles = [
   "src/physics.js",
-  "src/dispersion.js",
   "src/colormap.js",
   "src/canvas.js",
   "src/charts.js",
@@ -391,7 +380,7 @@ check("Clicking sCMOS highlights it and un-highlights CCD",
   scmosBtn.classList.contains("is-active") && !ccdBtn.classList.contains("is-active") && !ingaasBtn.classList.contains("is-active"));
 check(
   "Clicking sCMOS loads its defaults",
-  JSON.stringify(readCameraTypeParams()) === JSON.stringify({ photons: 20, qe: 0.82, darkCurrent: 0.02, readNoise: 1.2, fullWell: 30000, offset: 100, gain: 1.8, pixelSize: 6.5, bitDepth: 16 }),
+  JSON.stringify(readCameraTypeParams()) === JSON.stringify({ photons: 20, qe: 0.82, darkCurrent: 0.02, readNoise: 1.2, fullWell: 30000, offset: 100, gain: 1, pixelSize: 6.5, bitDepth: 16 }),
   readCameraTypeParams()
 );
 
@@ -400,7 +389,7 @@ check("Clicking InGaAs highlights it and un-highlights sCMOS",
   ingaasBtn.classList.contains("is-active") && !ccdBtn.classList.contains("is-active") && !scmosBtn.classList.contains("is-active"));
 check(
   "Clicking InGaAs loads its defaults",
-  JSON.stringify(readCameraTypeParams()) === JSON.stringify({ photons: 100, qe: 0.7, darkCurrent: 365, readNoise: 23, fullWell: 1400000, offset: 100, gain: 100, pixelSize: 15, bitDepth: 14 }),
+  JSON.stringify(readCameraTypeParams()) === JSON.stringify({ photons: 100, qe: 0.7, darkCurrent: 365, readNoise: 23, fullWell: 1400000, offset: 100, gain: 1, pixelSize: 15, bitDepth: 14 }),
   readCameraTypeParams()
 );
 
@@ -439,20 +428,14 @@ check("EM Gain slider/number defaults to 1", parseFloat(emGainNumberEl.value) ==
 check("EM Gain slider bounds are [1, 1000]", emGainNumberEl.min === "1" && emGainNumberEl.max === "1000");
 
 // Checking the box alone (before touching the slider, EM Gain still at its
-// default of 1x) already changes the SNR - the F^2=2 excess-noise factor
-// applies to shot/dark noise as soon as EM Gain is enabled, independent of
-// the multiplier's value (at 1x, readNoise/emGain = readNoise/1 is a no-op,
-// but the F^2 noise inflation is NOT a no-op). Signal is UNCHANGED by EM
-// Gain (photons x QE, same as always - the "top side" of the SNR ratio
-// never gets touched).
-const expectedSignalGain1 = Math.min(20 * 0.95, 100000);
-const expectedShotGain1 = Math.sqrt(2 * expectedSignalGain1); // F^2 = 2
-const expectedDarkNoiseGain1 = Math.sqrt(2 * 0.00013 * 1.0); // F^2 = 2
-const expectedReadNoiseGain1 = 2.9 / 1; // / emGain (1x here)
-const expectedNoiseTotalGain1 = Math.sqrt(expectedShotGain1 ** 2 + expectedDarkNoiseGain1 ** 2 + expectedReadNoiseGain1 ** 2);
+// default of 1) already changes the SNR - QE is halved for the calculation
+// as soon as EM Gain is enabled, independent of the multiplier's value.
+const expectedSignalGain1 = Math.min(20 * (0.95 / 2) * 1, 100000);
+const expectedShotGain1 = Math.sqrt(expectedSignalGain1);
+const expectedNoiseTotalGain1 = Math.sqrt(expectedShotGain1 ** 2 + (0.00013) + 2.9 ** 2);
 const expectedSNRGain1 = expectedSignalGain1 / expectedNoiseTotalGain1;
 check(
-  "Checking EM Gain (still at 1x) already applies the F^2=2 excess noise factor to shot/dark noise",
+  "Checking EM Gain (still at 1x) already halves QE for the calculation",
   Math.abs(currentSnrMarkerY() - expectedSNRGain1) < 1e-3,
   { actual: currentSnrMarkerY(), expected: expectedSNRGain1 }
 );
@@ -460,19 +443,18 @@ check(
 emGainNumberEl.value = "100";
 emGainNumberEl.dispatchEvent(new window.Event("change"));
 
-// Expected SNR with EM Gain: signal = photons x QE (UNCHANGED - EM Gain
-// never touches the numerator); shot/dark noise x F^2 (fixed at 2); read
-// noise / EM Gain (raw division, no cap/floor) - computed independently
-// here from the CCD defaults (QE 0.95, dark current 0.00013, read noise
-// 2.9, full well 100,000, exposure 1.0s) and current photons (20).
-const expectedSignal = Math.min(20 * 0.95, 100000);
-const expectedShot = Math.sqrt(2 * expectedSignal);
-const expectedDarkNoise = Math.sqrt(2 * 0.00013 * 1.0);
-const expectedReadNoise = 2.9 / 100;
+// Expected SNR with EM Gain: effective QE = (CCD QE / 2) * EM Gain, fed into
+// the exact same shot-noise/SNR formulas physics.js already uses - computed
+// independently here from the CCD defaults (QE 0.95, dark current 0.00013,
+// read noise 2.9, full well 100,000, exposure 1.0s) and current photons (20).
+const expectedSignal = Math.min(20 * (0.95 / 2) * 100, 100000);
+const expectedShot = Math.sqrt(expectedSignal);
+const expectedDarkNoise = Math.sqrt(0.00013 * 1.0);
+const expectedReadNoise = 2.9;
 const expectedNoiseTotal = Math.sqrt(expectedShot ** 2 + expectedDarkNoise ** 2 + expectedReadNoise ** 2);
 const expectedSNR = expectedSignal / expectedNoiseTotal;
 check(
-  "EM Gain 100x: current-SNR marker matches signal-unchanged, F^2=2 shot/dark, readNoise/emGain formula",
+  "EM Gain 100x: current-SNR marker matches the (QE/2)*EMGain formula",
   Math.abs(currentSnrMarkerY() - expectedSNR) < 1e-3,
   { actual: currentSnrMarkerY(), expected: expectedSNR }
 );
@@ -898,61 +880,12 @@ check("Title bar subtitle reads 'A Camera Simulation Tool'", !!subtitleEl && sub
 const versionEl = window.document.querySelector(".app-version");
 check("Title bar shows a version identifier next to the subtitle", !!versionEl && /^v\d+\.\d+\.\d+$/.test(versionEl.textContent), versionEl && versionEl.textContent);
 
-// --- 13b. Splash / landing screen ---
-const splashScreenEl = window.document.getElementById("splash-screen");
-check("Splash screen exists and is visible on load (not [hidden])", !!splashScreenEl && splashScreenEl.hidden === false);
-check(
-  "Splash screen shows the PhotonBench wordmark as SVG text (Photon + bold Bench)",
-  !!splashScreenEl && /Photon/.test(splashScreenEl.textContent) && /Bench/.test(splashScreenEl.textContent)
-);
-
-const splashBtnImaging = window.document.getElementById("splash-btn-imaging");
-const splashBtnSpectroscopy = window.document.getElementById("splash-btn-spectroscopy");
-const splashBtnSnr = window.document.getElementById("splash-btn-snr");
-check(
-  "Splash screen has exactly three mode buttons, correctly labeled and data-mode tagged",
-  !!splashBtnImaging && !!splashBtnSpectroscopy && !!splashBtnSnr
-  && splashBtnImaging.textContent === "Imaging" && splashBtnImaging.dataset.mode === "imaging"
-  && splashBtnSpectroscopy.textContent === "Spectroscopy" && splashBtnSpectroscopy.dataset.mode === "spectroscopy"
-  && splashBtnSnr.textContent === "SNR Only" && splashBtnSnr.dataset.mode === "snr"
-);
-check(
-  "Splash screen sits before the app header in the document (renders on top)",
-  !!splashScreenEl && !!window.document.querySelector(".app-titlebar")
-  && Boolean(splashScreenEl.compareDocumentPosition(window.document.querySelector(".app-titlebar")) & window.Node.DOCUMENT_POSITION_FOLLOWING)
-);
-
-// Clicking a splash button should hide the splash AND jump into that mode -
-// use SNR Only (not the already-active Imaging) so switching is actually
-// observable, then restore to Imaging afterward for the rest of the suite.
-// Deliberately NOT Spectroscopy here: later in this file, a block of checks
-// assumes the spectrum-chart/height-snr-chart call counts are exactly 1
-// (only the page-load newPlot call) right up until Spectroscopy is first
-// switched into "for real" - triggering that switch this early would throw
-// those absolute counts off. SNR Only has no such gating (its panel-4/
-// panel-5 charts already update on every Imaging redraw), so a round trip
-// through it here is safe.
-const modeTabSnrForSplashTest = window.document.getElementById("mode-tab-snr");
-splashBtnSnr.dispatchEvent(new window.Event("click"));
-check("Clicking a splash mode button hides the splash screen", splashScreenEl.hidden === true);
-check(
-  "Clicking the SNR Only splash button actually switched into SNR Only mode",
-  modeTabSnrForSplashTest.classList.contains("is-active")
-  && modeTabSnrForSplashTest.getAttribute("aria-selected") === "true"
-);
-// Restore to Imaging so the rest of the suite starts from its expected mode.
-window.document.getElementById("mode-tab-imaging").dispatchEvent(new window.Event("click"));
-check(
-  "Restored to Imaging mode after the splash test",
-  window.document.getElementById("mode-tab-imaging").classList.contains("is-active")
-);
-
 // --- 14. Sensor width/height inputs: defaults, live resize, and clamping ---
 const sensorWidthInput = window.document.getElementById("sensor-width-input");
 const sensorHeightInput = window.document.getElementById("sensor-height-input");
 check("Sensor width input exists with default 1024", !!sensorWidthInput && parseFloat(sensorWidthInput.value) === 1024, sensorWidthInput && sensorWidthInput.value);
 check("Sensor height input exists with default 1024", !!sensorHeightInput && parseFloat(sensorHeightInput.value) === 1024, sensorHeightInput && sensorHeightInput.value);
-check("Sensor width input bounds are [500, 5000]", sensorWidthInput.min === "500" && sensorWidthInput.max === "5000");
+check("Sensor width input bounds are [1024, 5000]", sensorWidthInput.min === "1024" && sensorWidthInput.max === "5000");
 check("Sensor height input bounds are [1, 5000]", sensorHeightInput.min === "1" && sensorHeightInput.max === "5000");
 
 // Resize to a non-square sensor and confirm the canvas pixel buffer follows.
@@ -976,17 +909,17 @@ check(
 );
 
 // Out-of-range values should clamp back into bounds, not pass through raw.
-sensorWidthInput.value = "100"; // below the 500 minimum
+sensorWidthInput.value = "500"; // below the 1024 minimum
 sensorHeightInput.value = "999999"; // above the 5000 maximum
 sensorWidthInput.dispatchEvent(new window.Event("change"));
 sensorHeightInput.dispatchEvent(new window.Event("change"));
-check("Sensor width below minimum clamps to 500", parseFloat(sensorWidthInput.value) === 500, sensorWidthInput.value);
+check("Sensor width below minimum clamps to 1024", parseFloat(sensorWidthInput.value) === 1024, sensorWidthInput.value);
 check("Sensor height above maximum clamps to 5000", parseFloat(sensorHeightInput.value) === 5000, sensorHeightInput.value);
 
 const clampedPutImageData = putImageDataCalls[putImageDataCalls.length - 1];
 check(
-  "Canvas reflects the clamped dimensions (500x5000), not the raw out-of-range input",
-  clampedPutImageData.imageData.width === 500 && clampedPutImageData.imageData.height === 5000,
+  "Canvas reflects the clamped dimensions (1024x5000), not the raw out-of-range input",
+  clampedPutImageData.imageData.width === 1024 && clampedPutImageData.imageData.height === 5000,
   { width: clampedPutImageData.imageData.width, height: clampedPutImageData.imageData.height }
 );
 
@@ -1561,1092 +1494,41 @@ check(
   emGainCheckboxLabelFinal && emGainCheckboxLabelFinal.textContent
 );
 
-// --- 21. Mode tabs (Imaging / Spectroscopy / SNR Only) --------------------
+// --- 21. Mode tabs (Imaging / SNR Only) -----------------------------------
+// Spectroscopy was pulled for this intermediate release (placeholder-only,
+// no real simulation behind it yet) - see CHANGELOG.md. These tests cover
+// just the two modes that shipped.
 
 const modeTabImaging = window.document.getElementById("mode-tab-imaging");
-const modeTabSpectroscopy = window.document.getElementById("mode-tab-spectroscopy");
 const modeTabSnr = window.document.getElementById("mode-tab-snr");
 const modeViewImaging = window.document.getElementById("mode-imaging");
-const modeViewSpectroscopy = window.document.getElementById("mode-spectroscopy");
 const modeViewSnr = window.document.getElementById("mode-snr");
 
-check("All 3 mode tabs exist in the header", !!modeTabImaging && !!modeTabSpectroscopy && !!modeTabSnr);
+check("Both mode tabs exist in the header", !!modeTabImaging && !!modeTabSnr);
 check(
-  "Mode tabs are labeled 'Imaging', 'Spectroscopy', 'SNR Only', in that order",
-  modeTabImaging.textContent === "Imaging" && modeTabSpectroscopy.textContent === "Spectroscopy" && modeTabSnr.textContent === "SNR Only",
-  [modeTabImaging.textContent, modeTabSpectroscopy.textContent, modeTabSnr.textContent]
+  "Mode tabs are labeled 'Imaging', 'SNR Only'",
+  modeTabImaging.textContent === "Imaging" && modeTabSnr.textContent === "SNR Only",
+  [modeTabImaging.textContent, modeTabSnr.textContent]
 );
-const modeTabOrder = Array.from(window.document.querySelectorAll(".mode-tabs .mode-tab")).map((el) => el.id);
-check(
-  "Spectroscopy tab sits between Imaging and SNR Only in the header",
-  JSON.stringify(modeTabOrder) === JSON.stringify(["mode-tab-imaging", "mode-tab-spectroscopy", "mode-tab-snr"]),
-  modeTabOrder
-);
+check("No leftover Spectroscopy tab or mode-view in the DOM", !window.document.getElementById("mode-tab-spectroscopy") && !window.document.getElementById("mode-spectroscopy"));
 check(
   "Mode tabs live inside the header, to the right of the title (same wrapper as the Info button)",
   !!window.document.querySelector(".app-titlebar .app-header-right .mode-tabs") && !!window.document.querySelector(".app-titlebar .app-header-right #info-btn")
 );
-check("All 3 mode-view containers exist", !!modeViewImaging && !!modeViewSpectroscopy && !!modeViewSnr);
+check("Both mode-view containers exist", !!modeViewImaging && !!modeViewSnr);
 check(
   "style.css hides .mode-view by default and shows it via .is-active",
   /\.mode-view\s*\{[^}]*display:\s*none/.test(styleCssText) && /\.mode-view\.is-active\s*\{[^}]*display:\s*grid/.test(styleCssText)
 );
 
 check("Imaging is the active mode on page load", modeViewImaging.classList.contains("is-active") && modeTabImaging.classList.contains("is-active"));
-check("Imaging tab starts aria-selected=true, the other two false", modeTabImaging.getAttribute("aria-selected") === "true" && modeTabSpectroscopy.getAttribute("aria-selected") === "false" && modeTabSnr.getAttribute("aria-selected") === "false");
+check("Imaging tab starts aria-selected=true, SNR Only's false", modeTabImaging.getAttribute("aria-selected") === "true" && modeTabSnr.getAttribute("aria-selected") === "false");
 check("Imaging mode still contains Box 1 through Box 5 exactly as before (untouched by the mode tabs)", !!modeViewImaging.querySelector("#panel-1") && !!modeViewImaging.querySelector("#panel-2") && !!modeViewImaging.querySelector("#panel-3") && !!modeViewImaging.querySelector("#panel-4") && !!modeViewImaging.querySelector("#panel-5") && !!modeViewImaging.querySelector("#panel-comparison"));
-
-// Spectrum computation is gated to only run while Spectroscopy is the
-// active mode (it's roughly as expensive as the main frame simulation
-// itself, so it shouldn't run on every live frame while sitting on some
-// other tab). By this point in the test file, plenty of parameter changes
-// have already happened on the Imaging tab (Photons, Gain, Pixel Size,
-// Reset to Default, binning, etc., each of which calls drawLiveFrame()) -
-// none of those should have produced a real spectrum-chart update, so only
-// the one initSpectrumChart() newPlot call from page load should exist.
-const spectrumChartCallsBeforeSpectroscopyTab = plotlyCalls.filter((c) => c.divId === "spectrum-chart");
-check(
-  "No spectrum-chart update happened while on the Imaging tab, despite many parameter changes (mode-gated as expected)",
-  spectrumChartCallsBeforeSpectroscopyTab.length === 1,
-  spectrumChartCallsBeforeSpectroscopyTab.length
-);
-// SNR vs. ROI Height is gated the same way (updateHeightSNRChart() is only
-// called from updateSpectrumIfActive(), which early-returns off the
-// Spectroscopy tab) - same "only the initial newPlot call" expectation.
-const heightSnrCallsBeforeSpectroscopyTab = plotlyCalls.filter((c) => c.divId === "height-snr-chart");
-check(
-  "No height-snr-chart update happened while on the Imaging tab either (same mode-gating as the spectrum)",
-  heightSnrCallsBeforeSpectroscopyTab.length === 1,
-  heightSnrCallsBeforeSpectroscopyTab.length
-);
-
-// Play/Pause should auto-pause on every tab switch - turn it on here so the
-// upcoming Spectroscopy switch has something to actually pause.
-check("Play button reads 'Play' before this check (not already playing)", playBtn.textContent === "Play", playBtn.textContent);
-playBtn.dispatchEvent(new window.Event("click"));
-check("Play button now reads 'Pause' (playing, ahead of the mode-switch pause test)", playBtn.textContent === "Pause", playBtn.textContent);
-
-// --- Spectroscopy mode: Calculated Spectrum is a placeholder; Image
-// Simulator is the real, shared Box 1 (#panel-1) borrowed from Imaging; ROI
-// panel is a placeholder reserved for later. ---
-modeTabSpectroscopy.dispatchEvent(new window.Event("click"));
-check("Clicking Spectroscopy activates its mode-view and deactivates Imaging's", modeViewSpectroscopy.classList.contains("is-active") && !modeViewImaging.classList.contains("is-active"));
-check("Spectroscopy tab becomes aria-selected, Imaging's no longer is", modeTabSpectroscopy.getAttribute("aria-selected") === "true" && modeTabImaging.getAttribute("aria-selected") === "false");
-check(
-  "Switching tabs auto-paused Play (was on before the switch)",
-  playBtn.textContent === "Play" && !playBtn.classList.contains("is-playing"),
-  playBtn.textContent
-);
-check(
-  "Switching INTO Spectroscopy triggered exactly one fresh spectrum-chart update (not zero, not a recurring flood)",
-  plotlyCalls.filter((c) => c.divId === "spectrum-chart").length === spectrumChartCallsBeforeSpectroscopyTab.length + 1,
-  plotlyCalls.filter((c) => c.divId === "spectrum-chart").length
-);
-check(
-  "Switching INTO Spectroscopy also triggered exactly one fresh height-snr-chart update",
-  plotlyCalls.filter((c) => c.divId === "height-snr-chart").length === heightSnrCallsBeforeSpectroscopyTab.length + 1,
-  plotlyCalls.filter((c) => c.divId === "height-snr-chart").length
-);
-
-const spectrumPanel = window.document.getElementById("panel-spectrum");
-const spectroRoiPanel = window.document.getElementById("panel-spectro-roi");
-const spectroSlotImageEl = window.document.getElementById("spectro-slot-image");
-const cameraSimPanelEl = window.document.getElementById("panel-1");
-check("Spectroscopy has a Calculated Spectrum panel", !!spectrumPanel && spectrumPanel.querySelector("h2").textContent === "Calculated Spectrum");
-check(
-  "Spectroscopy has a Region of Interest & Spectroscopy Controls panel below the first two",
-  !!spectroRoiPanel && spectroRoiPanel.querySelector("h2").textContent === "Region of Interest & Spectroscopy Controls"
-);
-check(
-  "Spectrum and ROI placeholder panels are direct children of the mode-view",
-  spectrumPanel.parentElement === modeViewSpectroscopy && spectroRoiPanel.parentElement === modeViewSpectroscopy
-);
-check(
-  "style.css gives Spectroscopy mode two equal-width columns for the top row and the third panel spanning both columns below",
-  /#mode-spectroscopy\.is-active\s*\{[^}]*grid-template-columns:\s*1fr 1fr/.test(styleCssText)
-  && /#panel-spectro-roi\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/.test(styleCssText)
-);
-check(
-  "Calculated Spectrum and Image Simulator are the same grid row (equal height), Region of Interest panel is a separate row below",
-  /#mode-spectroscopy\.is-active\s*\{[^}]*grid-template-rows:\s*\S+\s+\S+/.test(styleCssText)
-);
-
-// Calculated Spectrum has a real (if still traceless) Plotly chart wired up
-// now, not the generic "Coming soon" placeholder body.
-check(
-  "Calculated Spectrum panel contains a #spectrum-chart div, not the placeholder body",
-  !!spectrumPanel.querySelector("#spectrum-chart") && !spectrumPanel.querySelector(".panel-body-placeholder")
-);
-const spectrumChartCalls = plotlyCalls.filter((c) => c.divId === "spectrum-chart");
-check("Plotly was called to initialize the spectrum chart", spectrumChartCalls.length > 0);
-const lastSpectrumChartCall = spectrumChartCalls[spectrumChartCalls.length - 1];
-check(
-  "Spectrum chart's x-axis is titled 'Pixel' and y-axis is titled 'Intensity'",
-  !!lastSpectrumChartCall && lastSpectrumChartCall.layout.xaxis.title === "Pixel" && lastSpectrumChartCall.layout.yaxis.title === "Intensity",
-  lastSpectrumChartCall && [lastSpectrumChartCall.layout.xaxis.title, lastSpectrumChartCall.layout.yaxis.title]
-);
-// Full Vertical Bin: the spectrum trace has one intensity value per (binned)
-// column - the entire sensor height summed into a single row. Computed live
-// in drawLiveFrame(), so by now (well after page load) it already has real
-// data, not the empty placeholder from initSpectrumChart().
-const nativeSensorWidthForSpectrum = parseFloat(sensorWidthInput.value);
-const currentHorizontalBinForSpectrum = parseFloat(binHorizontalSelect.value);
-const expectedSpectrumCols = Math.floor(nativeSensorWidthForSpectrum / currentHorizontalBinForSpectrum);
-check(
-  "Spectrum chart has one intensity value per binned column (Full Vertical Bin), not the empty placeholder",
-  !!lastSpectrumChartCall && lastSpectrumChartCall.traces.length === 1
-  && lastSpectrumChartCall.traces[0].x.length === expectedSpectrumCols
-  && lastSpectrumChartCall.traces[0].y.length === expectedSpectrumCols,
-  lastSpectrumChartCall && [lastSpectrumChartCall.traces[0].x.length, expectedSpectrumCols]
-);
-check(
-  "Spectrum trace contains real, finite, non-all-zero intensity values (a genuine simulated result, not placeholder zeros)",
-  !!lastSpectrumChartCall && lastSpectrumChartCall.traces[0].y.every((v) => Number.isFinite(v)) && lastSpectrumChartCall.traces[0].y.some((v) => v > 0)
-);
-
-// --- Binning is mirrored (Horizontal only) into the Spectroscopy ROI panel,
-// staying in sync with the primary copy's Horizontal select in Camera
-// Parameters (same underlying params.binHorizontal). Vertical Bin has no
-// presence here at all - Full Vertical Bin/ROI govern the spectrum's row
-// handling instead, and Vertical Bin only affects the Image Simulator's own
-// displayed frame. ---
-const spectroBinningCheckbox = window.document.getElementById("spectro-binning-checkbox");
-const spectroBinHorizontalSelect = window.document.getElementById("spectro-bin-horizontal-select");
-const spectroBinVerticalSelect = window.document.getElementById("spectro-bin-vertical-select");
-const spectroBinningSelectRowEl = spectroBinHorizontalSelect && spectroBinHorizontalSelect.closest(".binning-select-row");
-check(
-  "Spectroscopy ROI panel has its own mirrored Horizontal Binning checkbox and select, but no Vertical select",
-  !!spectroBinningCheckbox && !!spectroBinHorizontalSelect && !spectroBinVerticalSelect
-);
-check(
-  "Mirrored checkbox reads 'Horizontal Binning', not just 'Binning'",
-  spectroBinningCheckbox.closest(".binning-checkbox-label").textContent.trim() === "Horizontal Binning",
-  spectroBinningCheckbox.closest(".binning-checkbox-label").textContent.trim()
-);
-check(
-  "Mirrored binning controls live inside panel-spectro-roi, not Camera Parameters",
-  !!spectroRoiPanel.contains(spectroBinningCheckbox) && !window.document.getElementById("camera-controls").contains(spectroBinningCheckbox)
-);
-check(
-  "Mirrored binning controls start unchecked/hidden and at 1x, matching the primary copy's default state",
-  spectroBinningCheckbox.checked === false && spectroBinningSelectRowEl.hidden === true
-  && spectroBinHorizontalSelect.value === "1"
-);
-
-// Checking the MIRRORED checkbox should reveal ITS OWN select row and also
-// check/reveal the PRIMARY copy back in Camera Parameters - both copies
-// share one enabled/disabled state.
-spectroBinningCheckbox.checked = true;
-spectroBinningCheckbox.dispatchEvent(new window.Event("change"));
-check(
-  "Checking the mirrored Horizontal Binning checkbox reveals its own select row",
-  spectroBinningSelectRowEl.hidden === false
-);
-check(
-  "Checking the mirrored Horizontal Binning checkbox also checks/reveals the primary copy in Camera Parameters",
-  binningCheckbox.checked === true && binningSelectRowEl.hidden === false
-);
-
-// Changing the mirrored Horizontal select should update the SAME
-// params.binHorizontal the primary copy uses, and push that new value out
-// to the primary copy's own Horizontal select too.
-spectroBinHorizontalSelect.value = "4";
-spectroBinHorizontalSelect.dispatchEvent(new window.Event("change"));
-check(
-  "Changing the mirrored Horizontal bin select updates the primary copy's Horizontal select to match",
-  binHorizontalSelect.value === "4",
-  binHorizontalSelect.value
-);
-
-// Changing Horizontal Bin (from either copy) also reshapes the spectrum
-// trace, since the spectrum groups the same number of native columns per
-// point that Horizontal Bin specifies - confirms the two are actually
-// wired together, not just coincidentally both showing "4".
-const spectrumCallsAfterHorizontalBin = plotlyCalls.filter((c) => c.divId === "spectrum-chart");
-const lastSpectrumCallAfterHorizontalBin = spectrumCallsAfterHorizontalBin[spectrumCallsAfterHorizontalBin.length - 1];
-const expectedSpectrumColsAfterHorizontalBin = Math.floor(parseFloat(sensorWidthInput.value) / 4);
-check(
-  "Spectrum trace reshapes to match the new Horizontal Bin factor (one point per 4 native columns)",
-  !!lastSpectrumCallAfterHorizontalBin && lastSpectrumCallAfterHorizontalBin.traces[0].x.length === expectedSpectrumColsAfterHorizontalBin,
-  lastSpectrumCallAfterHorizontalBin && [lastSpectrumCallAfterHorizontalBin.traces[0].x.length, expectedSpectrumColsAfterHorizontalBin]
-);
-
-// The PRIMARY copy's Vertical select still exists (Vertical Bin wasn't
-// removed from Camera Parameters, only from the Spectroscopy mirror) and
-// still only affects the Image Simulator's own displayed frame - the
-// spectrum's column count should be unaffected by it (still governed only
-// by Horizontal Bin, still 4 from above), same as before this change.
-binVerticalSelect.value = "2";
-binVerticalSelect.dispatchEvent(new window.Event("change"));
-check(
-  "The Spectroscopy panel has no Vertical select to push this change out to",
-  !window.document.getElementById("spectro-bin-vertical-select")
-);
-const spectrumCallsAfterVerticalBin = plotlyCalls.filter((c) => c.divId === "spectrum-chart");
-const lastSpectrumCallAfterVerticalBin = spectrumCallsAfterVerticalBin[spectrumCallsAfterVerticalBin.length - 1];
-check(
-  "Spectrum trace column count is unchanged by the Vertical Bin change (Full Vertical Bin ignores it)",
-  !!lastSpectrumCallAfterVerticalBin && lastSpectrumCallAfterVerticalBin.traces[0].x.length === expectedSpectrumColsAfterHorizontalBin,
-  lastSpectrumCallAfterVerticalBin && lastSpectrumCallAfterVerticalBin.traces[0].x.length
-);
-
-// Unchecking either copy resets the Horizontal factor back to 1x on both
-// copies (and, since it's still one shared enabled flag, also resets the
-// primary-only Vertical factor - same coupled behavior as before this
-// change, just no longer visible from the Spectroscopy panel).
-spectroBinningCheckbox.checked = false;
-spectroBinningCheckbox.dispatchEvent(new window.Event("change"));
-check(
-  "Unchecking the mirrored Horizontal Binning checkbox resets both copies' Horizontal factor to 1x and hides both select rows",
-  binningCheckbox.checked === false && binningSelectRowEl.hidden === true
-  && binHorizontalSelect.value === "1" && binVerticalSelect.value === "1"
-  && spectroBinningCheckbox.checked === false && spectroBinningSelectRowEl.hidden === true
-  && spectroBinHorizontalSelect.value === "1"
-);
-
-// --- Spectroscopy ROI: draggable/typeable Top+Bottom box on Box 1's canvas ---
-const sensorCanvas = window.document.getElementById("sensor-canvas");
-const roiTopInputEl = window.document.getElementById("roi-top-input");
-const roiBottomInputEl = window.document.getElementById("roi-bottom-input");
-const roiHeightInputEl = window.document.getElementById("roi-height-input");
-const roiControlsEl = window.document.getElementById("roi-controls");
-check(
-  "ROI Top/Bottom inputs exist inside the Spectroscopy ROI panel",
-  !!roiTopInputEl && !!roiBottomInputEl && spectroRoiPanel.contains(roiControlsEl)
-);
-check(
-  "ROI Height input exists inside the Spectroscopy ROI panel",
-  !!roiHeightInputEl && spectroRoiPanel.contains(roiHeightInputEl)
-);
-check(
-  "A 'Custom ROI' sub-header sits between Full Sensor Vertical Bin and the ROI inputs",
-  spectroRoiPanel.querySelector(".subsection-label").textContent === "Custom ROI"
-);
-check(
-  "Full Vertical Bin checkbox now reads 'Full Sensor Vertical Bin'",
-  window.document.getElementById("full-vbin-label").textContent.trim() === "Full Sensor Vertical Bin"
-);
-const sensorHeightAtROITest = parseFloat(sensorHeightInput.value);
-check(
-  "ROI defaults to the full sensor height (top=0, bottom=height-1)",
-  roiTopInputEl.value === "0" && roiBottomInputEl.value === String(sensorHeightAtROITest - 1),
-  [roiTopInputEl.value, roiBottomInputEl.value]
-);
-check(
-  "ROI inputs' max bound matches the current sensor height - 1",
-  roiTopInputEl.max === String(sensorHeightAtROITest - 1) && roiBottomInputEl.max === String(sensorHeightAtROITest - 1)
-);
-check(
-  "ROI Height defaults to the full sensor height - 1 (roiBottom - roiTop, matching the full-height default)",
-  roiHeightInputEl.value === String(sensorHeightAtROITest - 1),
-  roiHeightInputEl.value
-);
-
-// --- Full Vertical Bin: locks the ROI to the full sensor height, and gates
-// whether the Calculated Spectrum bins the whole height or just the ROI. ---
-const fullVBinCheckboxEl = window.document.getElementById("full-vbin-checkbox");
-check(
-  "Full Vertical Bin checkbox exists in the Spectroscopy ROI panel and is checked by default",
-  !!fullVBinCheckboxEl && fullVBinCheckboxEl.checked === true
-);
-check(
-  "ROI Top/Bottom/Height inputs are disabled while Full Vertical Bin is checked",
-  roiTopInputEl.disabled === true && roiBottomInputEl.disabled === true && roiHeightInputEl.disabled === true
-);
-
-function lastRoiFillRect() {
-  return rowIndicatorCalls.filter((c) => c.fn === "fillRect").pop();
-}
-const initialRoiFillRect = lastRoiFillRect();
-check(
-  "ROI box's initial paint spans the full sensor height",
-  !!initialRoiFillRect && initialRoiFillRect.y === 0 && initialRoiFillRect.h === sensorHeightAtROITest - 1,
-  initialRoiFillRect
-);
-
-// Uncheck Full Vertical Bin so the ROI's inputs/dragging are actually live
-// for the manual-edit and drag tests below.
-fullVBinCheckboxEl.checked = false;
-fullVBinCheckboxEl.dispatchEvent(new window.Event("change"));
-check(
-  "Unchecking Full Vertical Bin enables the ROI Top/Bottom/Height inputs",
-  roiTopInputEl.disabled === false && roiBottomInputEl.disabled === false && roiHeightInputEl.disabled === false
-);
-
-// Typing a new Bottom value moves just that edge.
-roiBottomInputEl.value = "500";
-roiBottomInputEl.dispatchEvent(new window.Event("change"));
-check("Typing ROI Bottom = 500 updates the input", roiBottomInputEl.value === "500", roiBottomInputEl.value);
-check("Typing ROI Bottom = 500 leaves Top untouched", roiTopInputEl.value === "0", roiTopInputEl.value);
-check(
-  "ROI box repaints at the new bottom (0 to 500) without re-simulating (cheap overlay redraw)",
-  lastRoiFillRect().y === 0 && lastRoiFillRect().h === 500,
-  lastRoiFillRect()
-);
-check(
-  "Height updates to match (roiBottom - roiTop = 500 - 0 = 500) after typing Bottom directly",
-  roiHeightInputEl.value === "500",
-  roiHeightInputEl.value
-);
-
-// Height is anchored to the ROI BOTTOM pixel (roiTopInputEl/params.roiTop,
-// the smaller native row - currently 0): changing Height should leave
-// roiTopInputEl untouched and move roiBottomInputEl to roiTop + height.
-roiHeightInputEl.value = "300";
-roiHeightInputEl.dispatchEvent(new window.Event("change"));
-check(
-  "Changing Height leaves the anchored ROI Bottom pixel (roiTopInputEl) untouched",
-  roiTopInputEl.value === "0",
-  roiTopInputEl.value
-);
-check(
-  "Changing Height moves the ROI Top pixel (roiBottomInputEl) to roiTop + height",
-  roiBottomInputEl.value === "300",
-  roiBottomInputEl.value
-);
-check(
-  "Height input itself reflects the value just typed",
-  roiHeightInputEl.value === "300",
-  roiHeightInputEl.value
-);
-
-// Now anchor from a non-zero roiTop, to confirm Height truly anchors to
-// whatever the current ROI Bottom pixel is, not just 0.
-roiTopInputEl.value = "100";
-roiTopInputEl.dispatchEvent(new window.Event("change"));
-roiHeightInputEl.value = "50";
-roiHeightInputEl.dispatchEvent(new window.Event("change"));
-check(
-  "Height anchors to the current ROI Bottom pixel (100), not always 0",
-  roiTopInputEl.value === "100" && roiBottomInputEl.value === "150",
-  [roiTopInputEl.value, roiBottomInputEl.value]
-);
-
-// Typing a Top value that crosses the current Bottom (150, from the Height
-// anchoring test above) pushes Bottom out of the way (priority favors the
-// edge the user just intentionally moved).
-roiTopInputEl.value = "600";
-roiTopInputEl.dispatchEvent(new window.Event("change"));
-check(
-  "Typing ROI Top = 600 (past the current Bottom) pushes Bottom to Top+1 instead of rejecting the input",
-  roiTopInputEl.value === "600" && roiBottomInputEl.value === "601",
-  [roiTopInputEl.value, roiBottomInputEl.value]
-);
-
-// Out-of-range values clamp to the sensor's own bounds.
-roiTopInputEl.value = "-50";
-roiTopInputEl.dispatchEvent(new window.Event("change"));
-check("ROI Top clamps to 0 when set below the sensor's range", roiTopInputEl.value === "0", roiTopInputEl.value);
-
-roiBottomInputEl.value = "999999";
-roiBottomInputEl.dispatchEvent(new window.Event("change"));
-check(
-  "ROI Bottom clamps to sensor height - 1 when set above the sensor's range",
-  roiBottomInputEl.value === String(sensorHeightAtROITest - 1),
-  roiBottomInputEl.value
-);
-
-// --- Dragging an edge directly on the canvas ---
-// jsdom has no real layout engine, so sensor-canvas's getBoundingClientRect()
-// is stubbed to a specific box here to make the pointer<->native-row mapping
-// (see sensorCanvasVerticalMapping() in main.js) verifiable. A 1024x1024
-// native sensor rendered into a 512x512 CSS box, with object-fit:contain and
-// matching aspect ratios, means no letterboxing - 1 CSS px = 2 native rows.
-Object.defineProperty(sensorCanvas, "getBoundingClientRect", {
-  value: () => ({ top: 0, left: 0, width: 512, height: 512 }),
-  configurable: true,
-});
-
-// Reset ROI to a known state (top=100, bottom=800) via the inputs before
-// exercising drag, so the drag test isn't coupled to the clamping test above.
-roiTopInputEl.value = "100";
-roiTopInputEl.dispatchEvent(new window.Event("change"));
-roiBottomInputEl.value = "800";
-roiBottomInputEl.dispatchEvent(new window.Event("change"));
-
-// Top edge is at native row 100 = CSS y 50. Grab within the hit zone (2px
-// off) and drag it down to CSS y 80 (native row 160). Plain window.Event
-// doesn't carry clientY - MouseEvent does, and jsdom matches listeners by
-// event TYPE STRING regardless of which Event subclass fired it, so
-// dispatching a MouseEvent for "pointerdown"/"pointermove"/"pointerup" is a
-// safe way to get real clientY values into main.js's handlers.
-sensorCanvas.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, cancelable: true, clientY: 52 }));
-sensorCanvas.dispatchEvent(new window.MouseEvent("pointermove", { bubbles: true, clientY: 80 }));
-check(
-  "Dragging near the Top edge moves it to the pointer's mapped native row",
-  roiTopInputEl.value === "160",
-  roiTopInputEl.value
-);
-check("Dragging Top leaves Bottom untouched", roiBottomInputEl.value === "800", roiBottomInputEl.value);
-sensorCanvas.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, clientY: 80 }));
-
-// A pointerdown far from either edge (native row ~400, nowhere near 160 or
-// 800) shouldn't start a drag at all.
-sensorCanvas.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, cancelable: true, clientY: 200 }));
-sensorCanvas.dispatchEvent(new window.MouseEvent("pointermove", { bubbles: true, clientY: 300 }));
-check(
-  "Pointing down far from either edge does not start a drag or move either edge",
-  roiTopInputEl.value === "160" && roiBottomInputEl.value === "800",
-  [roiTopInputEl.value, roiBottomInputEl.value]
-);
-sensorCanvas.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, clientY: 300 }));
-
-// --- Re-checking Full Vertical Bin snaps the ROI back to full height and
-// re-locks the inputs/dragging. ---
-fullVBinCheckboxEl.checked = true;
-fullVBinCheckboxEl.dispatchEvent(new window.Event("change"));
-check(
-  "Re-checking Full Vertical Bin snaps the ROI back to the full sensor height",
-  roiTopInputEl.value === "0" && roiBottomInputEl.value === String(sensorHeightAtROITest - 1),
-  [roiTopInputEl.value, roiBottomInputEl.value]
-);
-check(
-  "Re-checking Full Vertical Bin disables the ROI inputs again",
-  roiTopInputEl.disabled === true && roiBottomInputEl.disabled === true
-);
-sensorCanvas.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, cancelable: true, clientY: 52 }));
-sensorCanvas.dispatchEvent(new window.MouseEvent("pointermove", { bubbles: true, clientY: 80 }));
-check(
-  "Dragging is locked while Full Vertical Bin is checked (ROI stays at full height)",
-  roiTopInputEl.value === "0",
-  roiTopInputEl.value
-);
-sensorCanvas.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, clientY: 80 }));
-
-// --- Unchecking Full Vertical Bin restricts the Calculated Spectrum to the
-// ROI's row range instead of the whole sensor height. ---
-const spectrumCallsWhileFullHeight = plotlyCalls.filter((c) => c.divId === "spectrum-chart");
-const lastSpectrumWhileFullHeight = spectrumCallsWhileFullHeight[spectrumCallsWhileFullHeight.length - 1];
-const meanFullHeight =
-  lastSpectrumWhileFullHeight.traces[0].y.reduce((a, b) => a + b, 0) / lastSpectrumWhileFullHeight.traces[0].y.length;
-
-fullVBinCheckboxEl.checked = false;
-fullVBinCheckboxEl.dispatchEvent(new window.Event("change"));
-roiTopInputEl.value = "0";
-roiTopInputEl.dispatchEvent(new window.Event("change"));
-roiBottomInputEl.value = "9"; // a 10-row sliver instead of the full ~1024-row height
-roiBottomInputEl.dispatchEvent(new window.Event("change"));
-
-const spectrumCallsWithNarrowROI = plotlyCalls.filter((c) => c.divId === "spectrum-chart");
-const lastSpectrumWithNarrowROI = spectrumCallsWithNarrowROI[spectrumCallsWithNarrowROI.length - 1];
-const meanNarrowROI =
-  lastSpectrumWithNarrowROI.traces[0].y.reduce((a, b) => a + b, 0) / lastSpectrumWithNarrowROI.traces[0].y.length;
-check(
-  "Spectrum column count is still governed only by Horizontal Bin when Full Vertical Bin is unchecked",
-  lastSpectrumWithNarrowROI.traces[0].x.length === lastSpectrumWhileFullHeight.traces[0].x.length,
-  [lastSpectrumWithNarrowROI.traces[0].x.length, lastSpectrumWhileFullHeight.traces[0].x.length]
-);
-check(
-  "Restricting to a 10-row ROI produces a meaningfully smaller summed intensity than binning the full sensor height",
-  meanNarrowROI < meanFullHeight * 0.5,
-  [meanNarrowROI, meanFullHeight]
-);
-
-// Re-checking Full Vertical Bin should go back to summing the full height.
-fullVBinCheckboxEl.checked = true;
-fullVBinCheckboxEl.dispatchEvent(new window.Event("change"));
-const spectrumCallsAfterReChecking = plotlyCalls.filter((c) => c.divId === "spectrum-chart");
-const lastSpectrumAfterReChecking = spectrumCallsAfterReChecking[spectrumCallsAfterReChecking.length - 1];
-const meanAfterReChecking =
-  lastSpectrumAfterReChecking.traces[0].y.reduce((a, b) => a + b, 0) / lastSpectrumAfterReChecking.traces[0].y.length;
-check(
-  "Re-checking Full Vertical Bin returns the spectrum to summing the full sensor height",
-  meanAfterReChecking > meanNarrowROI * 2,
-  [meanAfterReChecking, meanNarrowROI]
-);
-
-// --- Dispersion Model controls (general_spectrometer_model.py inputs) ---
-// Six new controls, not yet wired into the actual spectrum computation -
-// this just confirms they exist, live in the right panel, and have the
-// requested default values.
-const dispersionControlsEl = window.document.getElementById("dispersion-controls");
-check(
-  "Dispersion Model controls container exists inside the Spectroscopy ROI panel",
-  !!dispersionControlsEl && spectroRoiPanel.contains(dispersionControlsEl)
-);
-
-// --- Three-column layout: Binning+ROI / Dispersion Model / SNR vs. Height ---
-const spectroColBinningEl = spectroRoiPanel.querySelector(".spectro-col-binning");
-const spectroColDispersionEl = spectroRoiPanel.querySelector(".spectro-col-dispersion");
-const spectroColHeightSnrEl = window.document.getElementById("spectro-col-snr-height");
-check(
-  "panel-spectro-roi has three .spectro-col columns",
-  !!spectroColBinningEl && !!spectroColDispersionEl && !!spectroColHeightSnrEl
-);
-check(
-  "Left column has a 'ROI & Binning' section header, matching the middle column's 'Dispersion Model' header",
-  spectroColBinningEl.querySelector("h3").textContent === "ROI & Binning"
-  && spectroColDispersionEl.querySelector("h3").textContent === "Dispersion Model"
-);
-check(
-  "ROI Top/Bottom labels are swapped: the smaller-value input (#roi-top-input) reads 'ROI Bottom', the larger-value input (#roi-bottom-input) reads 'ROI Top'",
-  window.document.querySelector("label[for='roi-top-input']").textContent.trim() === "ROI Bottom (px)"
-  && window.document.querySelector("label[for='roi-bottom-input']").textContent.trim() === "ROI Top (px)"
-);
-check(
-  "Full Vertical Bin, then ROI, then mirrored Binning all live in the left (Binning) column, in that order",
-  spectroColBinningEl.contains(fullVBinCheckboxEl) && spectroColBinningEl.contains(roiControlsEl)
-  && spectroColBinningEl.contains(spectroBinningCheckbox)
-  && (() => {
-    const order = [fullVBinCheckboxEl, roiControlsEl, spectroBinningCheckbox].map((el) => {
-      let n = el, depth = 0;
-      while (n && n !== spectroColBinningEl) { depth++; n = n.parentElement; }
-      return depth;
-    });
-    // Not a strict DOM-order check (nesting depth differs per element) -
-    // just confirms none of them accidentally ended up in another column.
-    return order.every((d) => d > 0);
-  })()
-);
-check(
-  "Dispersion Model controls live in the middle column, not the Binning/ROI column",
-  spectroColDispersionEl.contains(dispersionControlsEl) && !spectroColBinningEl.contains(dispersionControlsEl)
-);
-check(
-  "Columns are visually separated by a thin vertical rule (border-left in style.css)",
-  /\.spectro-col\s*\+\s*\.spectro-col\s*\{[^}]*border-left/.test(styleCssText)
-);
-
-// --- SNR vs. ROI Height: static analytic plot in the third column ---
-const heightSnrChartEl = window.document.getElementById("height-snr-chart");
-check(
-  "SNR vs. ROI Height chart div exists inside the third column",
-  !!heightSnrChartEl && spectroColHeightSnrEl.contains(heightSnrChartEl)
-);
-
-function lastHeightSnrCall() {
-  const calls = plotlyCalls.filter((c) => c.divId === "height-snr-chart");
-  return calls[calls.length - 1];
-}
-
-// Already on the Spectroscopy tab continuously since the mode-gating checks
-// earlier in this file (around the spectrum-chart's own equivalent checks) -
-// no need to switch tabs again here.
-const heightSnrCallAfterTab = lastHeightSnrCall();
-const nativeSensorHeightForHeightSnr = parseFloat(sensorHeightInput.value);
-check(
-  "SNR vs. ROI Height x-axis spans exactly [1, sensor height]",
-  heightSnrCallAfterTab.layout.xaxis.range[0] === 1
-  && heightSnrCallAfterTab.layout.xaxis.range[1] === nativeSensorHeightForHeightSnr,
-  heightSnrCallAfterTab.layout.xaxis.range
-);
-check(
-  "SNR vs. ROI Height trace has one point per possible height (1..sensor height)",
-  heightSnrCallAfterTab.traces[0].x.length === nativeSensorHeightForHeightSnr
-  && heightSnrCallAfterTab.traces[0].x[0] === 1
-  && heightSnrCallAfterTab.traces[0].x[heightSnrCallAfterTab.traces[0].x.length - 1] === nativeSensorHeightForHeightSnr,
-  heightSnrCallAfterTab.traces[0].x.length
-);
-check(
-  "SNR generally increases with height (binning more rows improves SNR)",
-  heightSnrCallAfterTab.traces[0].y[heightSnrCallAfterTab.traces[0].y.length - 1] > heightSnrCallAfterTab.traces[0].y[0],
-  [heightSnrCallAfterTab.traces[0].y[0], heightSnrCallAfterTab.traces[0].y[heightSnrCallAfterTab.traces[0].y.length - 1]]
-);
-check(
-  "The dashed red current-height line defaults to the full sensor height (Full Sensor Vertical Bin is checked by default)",
-  heightSnrCallAfterTab.layout.shapes[0].x0 === nativeSensorHeightForHeightSnr
-  && heightSnrCallAfterTab.layout.shapes[0].line.dash === "dash"
-  && heightSnrCallAfterTab.layout.shapes[0].line.color === "#e63946",
-  heightSnrCallAfterTab.layout.shapes[0]
-);
-
-// Uncheck Full Sensor Vertical Bin and set a specific ROI Height - the red
-// line should move to match, and NOT to the sensor height.
-fullVBinCheckboxEl.checked = false;
-fullVBinCheckboxEl.dispatchEvent(new window.Event("change"));
-roiTopInputEl.value = "0";
-roiTopInputEl.dispatchEvent(new window.Event("change"));
-roiHeightInputEl.value = "199"; // -> roiBottom = 199, so true row count (roiBottom-roiTop+1) = 200
-roiHeightInputEl.dispatchEvent(new window.Event("change"));
-const heightSnrCallAfterRoiHeight = lastHeightSnrCall();
-check(
-  "Unchecking Full Sensor Vertical Bin moves the red line to the Custom ROI's true row count (roiBottom - roiTop + 1)",
-  heightSnrCallAfterRoiHeight.layout.shapes[0].x0 === 200,
-  heightSnrCallAfterRoiHeight.layout.shapes[0].x0
-);
-check(
-  "The x-axis range itself stays pinned to [1, sensor height] regardless of the current ROI Height",
-  heightSnrCallAfterRoiHeight.layout.xaxis.range[0] === 1
-  && heightSnrCallAfterRoiHeight.layout.xaxis.range[1] === nativeSensorHeightForHeightSnr,
-  heightSnrCallAfterRoiHeight.layout.xaxis.range
-);
-
-// Horizontal Bin should reshape the curve (n = binHorizontal * height at
-// every point), without touching the x-axis range or point count.
-const snrAtHeight10BeforeHBin = heightSnrCallAfterRoiHeight.traces[0].y[9]; // index 9 -> height 10
-spectroBinningCheckbox.checked = true;
-spectroBinningCheckbox.dispatchEvent(new window.Event("change"));
-spectroBinHorizontalSelect.value = "4";
-spectroBinHorizontalSelect.dispatchEvent(new window.Event("change"));
-const heightSnrCallAfterHBin = lastHeightSnrCall();
-check(
-  "Turning on Horizontal Bin = 4 changes the SNR vs. Height curve (n = binHorizontal * height now)",
-  heightSnrCallAfterHBin.traces[0].y[9] !== snrAtHeight10BeforeHBin,
-  [snrAtHeight10BeforeHBin, heightSnrCallAfterHBin.traces[0].y[9]]
-);
-check(
-  "Horizontal Bin doesn't change the x-axis range or point count",
-  heightSnrCallAfterHBin.layout.xaxis.range[0] === 1
-  && heightSnrCallAfterHBin.layout.xaxis.range[1] === nativeSensorHeightForHeightSnr
-  && heightSnrCallAfterHBin.traces[0].x.length === nativeSensorHeightForHeightSnr
-);
-
-// Clean up: back to defaults so later tests aren't affected by this block.
-spectroBinningCheckbox.checked = false;
-spectroBinningCheckbox.dispatchEvent(new window.Event("change"));
-fullVBinCheckboxEl.checked = true;
-fullVBinCheckboxEl.dispatchEvent(new window.Event("change"));
-
-const centerWavelengthNumberEl = window.document.getElementById("center-wavelength-number");
-const grooveDensityNumberEl = window.document.getElementById("groove-density-number");
-const focalLengthNumberEl = window.document.getElementById("focal-length-number");
-const fNumberNumberEl = window.document.getElementById("f-number-number");
-const slitWidthNumberEl = window.document.getElementById("slit-width-number");
-
-check(
-  "Included Angle 2K control was removed from the Dispersion Model list (fixed, not user-editable)",
-  !window.document.getElementById("included-angle-2k-number")
-);
-check(
-  "The five remaining Dispersion Model controls exist",
-  !!centerWavelengthNumberEl && !!grooveDensityNumberEl
-  && !!focalLengthNumberEl && !!fNumberNumberEl && !!slitWidthNumberEl
-);
-check(
-  "Dispersion Model controls default to the requested values",
-  centerWavelengthNumberEl.value === "600" && grooveDensityNumberEl.value === "300"
-  && focalLengthNumberEl.value === "300"
-  && fNumberNumberEl.value === "4" && slitWidthNumberEl.value === "10",
-  [
-    centerWavelengthNumberEl.value, grooveDensityNumberEl.value,
-    focalLengthNumberEl.value, fNumberNumberEl.value, slitWidthNumberEl.value,
-  ]
-);
-check(
-  "Groove Density control is relabeled 'Grating Groove Density (l/mm)'",
-  window.document.querySelector('label[for="groove-density-slider"]').textContent === "Grating Groove Density (l/mm)",
-  window.document.querySelector('label[for="groove-density-slider"]').textContent
-);
-
-const dispersionControlIds = Array.from(
-  window.document.getElementById("dispersion-controls").querySelectorAll(".param-control")
-).map((el) => el.querySelector("input[type=number]").id);
-check(
-  "Dispersion Model order: Focal Length first, Slit Width immediately after Groove Density",
-  dispersionControlIds[0] === "focal-length-number"
-  && dispersionControlIds.indexOf("slit-width-number") === dispersionControlIds.indexOf("groove-density-number") + 1,
-  dispersionControlIds
-);
-
-// --- Dispersion Model results dropdown (Wavelength Range/Resolution) ---
-// Starts collapsed by default (unlike Experimental/Camera Parameters, which
-// start expanded) since these are computed results the user opts into,
-// tucked behind the "Dispersion Model" header to save vertical space.
-const dispersionResultsGroupEl = window.document.getElementById("dispersion-results-group");
-const dispersionResultsToggleEl = window.document.getElementById("dispersion-results-toggle");
-const dispersionResultsEl = window.document.getElementById("dispersion-results");
-check(
-  "Dispersion Model results dropdown starts collapsed",
-  !!dispersionResultsGroupEl && dispersionResultsGroupEl.classList.contains("is-collapsed")
-  && dispersionResultsToggleEl.getAttribute("aria-expanded") === "false"
-);
-dispersionResultsToggleEl.dispatchEvent(new window.Event("click"));
-check(
-  "Clicking the Dispersion Model header expands the results dropdown",
-  !dispersionResultsGroupEl.classList.contains("is-collapsed")
-  && dispersionResultsToggleEl.getAttribute("aria-expanded") === "true"
-);
-check(
-  "Wavelength Range and Resolution readouts live inside the results dropdown",
-  !!dispersionResultsEl
-  && dispersionResultsEl.contains(window.document.getElementById("wavelength-range-display"))
-  && dispersionResultsEl.contains(window.document.getElementById("resolution-display"))
-);
-dispersionResultsToggleEl.dispatchEvent(new window.Event("click"));
-check(
-  "Clicking the header again re-collapses the results dropdown",
-  dispersionResultsGroupEl.classList.contains("is-collapsed")
-  && dispersionResultsToggleEl.getAttribute("aria-expanded") === "false"
-);
-// Re-expand for the remaining readout checks below (collapsed state is
-// purely a CSS display:none - textContent/values keep updating underneath
-// either way, but keep it open here for clarity while we exercise them).
-dispersionResultsToggleEl.dispatchEvent(new window.Event("click"));
-
-// --- Wavelength Range readout above the Dispersion Model controls ---
-const wavelengthRangeDisplayEl = window.document.getElementById("wavelength-range-display");
-check(
-  "Wavelength Range readout exists above the Dispersion Model controls, reading 'Wavelength Range: ...'",
-  !!wavelengthRangeDisplayEl && /^Wavelength Range: /.test(wavelengthRangeDisplayEl.textContent),
-  wavelengthRangeDisplayEl && wavelengthRangeDisplayEl.textContent
-);
-check(
-  "Wavelength Range readout sits above (before) the Dispersion Model controls in the DOM",
-  !!wavelengthRangeDisplayEl
-  && Boolean(wavelengthRangeDisplayEl.compareDocumentPosition(window.document.getElementById("dispersion-controls")) & window.Node.DOCUMENT_POSITION_FOLLOWING)
-);
-
-// Cross-check the printed span against dispersion.js's own pixelToWavelength,
-// called directly with the CURRENT live control/sensor values (not
-// hardcoded defaults, since earlier tests in this file may have changed
-// Pixel Size and/or Sensor Width) - confirms the readout is really the
-// wavelength at native pixel 0 vs. the last native pixel column, not just
-// some plausible-looking text.
-const currentDispersionParams = {
-  centerWavelengthNm: parseFloat(centerWavelengthNumberEl.value),
-  grooveDensity: parseFloat(grooveDensityNumberEl.value),
-  includedAngle2K: 60, // fixed, not user-exposed (see the removed control test above)
-  focalLengthMm: parseFloat(focalLengthNumberEl.value),
-  order: 1,
-  pixelSizeUm: parseFloat(window.document.getElementById("pixel-size-number").value),
-  sensorPxCount: parseFloat(sensorWidthInput.value),
-};
-const expectedWStart = window.CameraDispersion.pixelToWavelength(0, currentDispersionParams);
-const expectedWEnd = window.CameraDispersion.pixelToWavelength(currentDispersionParams.sensorPxCount - 1, currentDispersionParams);
-const expectedLo = Math.min(expectedWStart, expectedWEnd);
-const expectedHi = Math.max(expectedWStart, expectedWEnd);
-check(
-  "Wavelength Range readout matches pixel-0-to-last-pixel wavelengths from dispersion.js",
-  wavelengthRangeDisplayEl.textContent === `Wavelength Range: ${expectedLo.toFixed(1)}–${expectedHi.toFixed(1)} nm (${(expectedHi - expectedLo).toFixed(1)} nm span)`,
-  [wavelengthRangeDisplayEl.textContent, expectedLo, expectedHi]
-);
-
-// --- Resolution readout underneath Wavelength Range ---
-const resolutionDisplayEl = window.document.getElementById("resolution-display");
-check(
-  "Resolution readout exists directly below the Wavelength Range readout",
-  !!resolutionDisplayEl
-  && Boolean(wavelengthRangeDisplayEl.compareDocumentPosition(resolutionDisplayEl) & window.Node.DOCUMENT_POSITION_FOLLOWING)
-  && Boolean(resolutionDisplayEl.compareDocumentPosition(window.document.getElementById("dispersion-controls")) & window.Node.DOCUMENT_POSITION_FOLLOWING)
-);
-// Cross-check against the standard bandpass formula (reciprocal linear
-// dispersion x slit width), computed directly from dispersion.js and the
-// current live Slit Width control, not a hardcoded number.
-const expectedDispersionNmPerMm = window.CameraDispersion.nominalDispersion(currentDispersionParams);
-const expectedSlitWidthMm = parseFloat(slitWidthNumberEl.value) / 1000;
-const expectedResolutionNm = Math.abs(expectedDispersionNmPerMm) * expectedSlitWidthMm;
-check(
-  "Resolution readout matches reciprocal linear dispersion x Slit Width",
-  resolutionDisplayEl.textContent === `Resolution: ${expectedResolutionNm.toFixed(2)} nm`,
-  [resolutionDisplayEl.textContent, expectedResolutionNm]
-);
-
-// Driving the groove density into invalid-geometry territory should fall
-// back to an em-dash placeholder for BOTH readouts, same treatment as the
-// Calculated Spectrum's Pixel-axis fallback, rather than showing stale or
-// broken text.
-grooveDensityNumberEl.value = "3600";
-grooveDensityNumberEl.dispatchEvent(new window.Event("change"));
-check(
-  "Wavelength Range readout falls back to '—' on an invalid grating geometry",
-  wavelengthRangeDisplayEl.textContent === "Wavelength Range: —",
-  wavelengthRangeDisplayEl.textContent
-);
-check(
-  "Resolution readout also falls back to '—' on an invalid grating geometry",
-  resolutionDisplayEl.textContent === "Resolution: —",
-  resolutionDisplayEl.textContent
-);
-grooveDensityNumberEl.value = "300";
-grooveDensityNumberEl.dispatchEvent(new window.Event("change"));
-check(
-  "Wavelength Range readout recovers once groove density is back in valid range",
-  /^Wavelength Range: \d/.test(wavelengthRangeDisplayEl.textContent),
-  wavelengthRangeDisplayEl.textContent
-);
-check(
-  "Resolution readout recovers once groove density is back in valid range",
-  /^Resolution: \d/.test(resolutionDisplayEl.textContent),
-  resolutionDisplayEl.textContent
-);
-
-// Changing Slit Width should change the Resolution readout proportionally
-// (bandpass scales linearly with slit width), but leave Wavelength Range
-// untouched (that only depends on Center Wavelength, Groove Density,
-// Focal Length, Pixel Size, and Sensor Width).
-const wavelengthRangeBeforeSlitChange = wavelengthRangeDisplayEl.textContent;
-slitWidthNumberEl.value = "20"; // double the default of 10
-slitWidthNumberEl.dispatchEvent(new window.Event("change"));
-check(
-  "Doubling Slit Width roughly doubles the Resolution readout",
-  Math.abs(parseFloat(resolutionDisplayEl.textContent.replace("Resolution: ", "")) - expectedResolutionNm * 2) < 0.01,
-  resolutionDisplayEl.textContent
-);
-check(
-  "Changing Slit Width does not affect the Wavelength Range readout",
-  wavelengthRangeDisplayEl.textContent === wavelengthRangeBeforeSlitChange,
-  wavelengthRangeDisplayEl.textContent
-);
-slitWidthNumberEl.value = "10";
-slitWidthNumberEl.dispatchEvent(new window.Event("change"));
-
-// Changing one, then Reset to Default, should restore the requested default.
-centerWavelengthNumberEl.value = "450";
-centerWavelengthNumberEl.dispatchEvent(new window.Event("change"));
-check("Changing Center Wavelength updates the input", centerWavelengthNumberEl.value === "450", centerWavelengthNumberEl.value);
-resetBtn.dispatchEvent(new window.Event("click"));
-check(
-  "Reset to Default restores Center Wavelength to 600",
-  centerWavelengthNumberEl.value === "600",
-  centerWavelengthNumberEl.value
-);
-
-// --- Calculated Spectrum's Pixel/Wavelength x-axis toggle ---
-const spectrumXAxisPixelBtnEl = window.document.getElementById("spectrum-xaxis-pixel-btn");
-const spectrumXAxisWavelengthBtnEl = window.document.getElementById("spectrum-xaxis-wavelength-btn");
-check(
-  "Pixel/Wavelength toggle buttons exist, Pixel active by default",
-  !!spectrumXAxisPixelBtnEl && !!spectrumXAxisWavelengthBtnEl
-  && spectrumXAxisPixelBtnEl.classList.contains("is-active")
-  && !spectrumXAxisWavelengthBtnEl.classList.contains("is-active")
-);
-
-const spectrumCallsBeforeWavelengthToggle = plotlyCalls.filter((c) => c.divId === "spectrum-chart");
-const lastSpectrumCallBeforeToggle = spectrumCallsBeforeWavelengthToggle[spectrumCallsBeforeWavelengthToggle.length - 1];
-check(
-  "Before toggling, spectrum x-axis is titled 'Pixel'",
-  lastSpectrumCallBeforeToggle.layout.xaxis.title === "Pixel",
-  lastSpectrumCallBeforeToggle.layout.xaxis.title
-);
-
-spectrumXAxisWavelengthBtnEl.dispatchEvent(new window.Event("click"));
-check(
-  "Clicking Wavelength activates it and deactivates Pixel",
-  spectrumXAxisWavelengthBtnEl.classList.contains("is-active")
-  && !spectrumXAxisPixelBtnEl.classList.contains("is-active")
-);
-
-const spectrumCallsAfterWavelengthToggle = plotlyCalls.filter((c) => c.divId === "spectrum-chart");
-const lastSpectrumCallAfterToggle = spectrumCallsAfterWavelengthToggle[spectrumCallsAfterWavelengthToggle.length - 1];
-check(
-  "Toggling to Wavelength refreshed the chart immediately and retitled the x-axis",
-  spectrumCallsAfterWavelengthToggle.length === spectrumCallsBeforeWavelengthToggle.length + 1
-  && lastSpectrumCallAfterToggle.layout.xaxis.title === "Wavelength (nm)",
-  [spectrumCallsAfterWavelengthToggle.length, lastSpectrumCallAfterToggle.layout.xaxis.title]
-);
-
-// With the default Dispersion Model settings (600nm center, 300 grooves/mm,
-// 2K=60deg, 300mm focal length) and native pixel mapping, the sensor's
-// dead-center native pixel should map back to ~600nm (the whole point of
-// "center wavelength"). Confirms the values are real wavelengths, not just
-// relabeled pixel indices.
-const wavelengthTrace = lastSpectrumCallAfterToggle.traces[0].x;
-const midWavelength = wavelengthTrace[Math.floor(wavelengthTrace.length / 2)];
-check(
-  "Wavelength trace's center value is close to the 600nm Center Wavelength setting",
-  Math.abs(midWavelength - 600) < 5,
-  midWavelength
-);
-check(
-  "Wavelength trace is NOT just the plain 0..n-1 pixel index (real physics, not relabeling)",
-  wavelengthTrace.some((v, i) => Math.abs(v - i) > 1),
-  wavelengthTrace.slice(0, 5)
-);
-
-// An invalid grating geometry (groove density too high for this center
-// wavelength/angle) should fall back to Pixel for that render rather than
-// erroring or leaving the chart blank - see dispersion.js's
-// InvalidGratingGeometry and its catch in main.js's updateSpectrumIfActive().
-const grooveDensityNumberElForInvalidTest = window.document.getElementById("groove-density-number");
-grooveDensityNumberElForInvalidTest.value = "3600";
-grooveDensityNumberElForInvalidTest.dispatchEvent(new window.Event("change"));
-const spectrumCallsAfterInvalidGeometry = plotlyCalls.filter((c) => c.divId === "spectrum-chart");
-const lastSpectrumCallAfterInvalidGeometry = spectrumCallsAfterInvalidGeometry[spectrumCallsAfterInvalidGeometry.length - 1];
-check(
-  "An invalid grating geometry (groove density too high) falls back to the Pixel axis instead of erroring",
-  lastSpectrumCallAfterInvalidGeometry.layout.xaxis.title === "Pixel",
-  lastSpectrumCallAfterInvalidGeometry.layout.xaxis.title
-);
-
-// Restore a valid groove density and switch back to Pixel so later tests
-// aren't affected by this block's state.
-grooveDensityNumberElForInvalidTest.value = "300";
-grooveDensityNumberElForInvalidTest.dispatchEvent(new window.Event("change"));
-spectrumXAxisPixelBtnEl.dispatchEvent(new window.Event("click"));
-check(
-  "Switching back to Pixel deactivates Wavelength",
-  spectrumXAxisPixelBtnEl.classList.contains("is-active") && !spectrumXAxisWavelengthBtnEl.classList.contains("is-active")
-);
-
-// --- SNR vs. ROI Height export button ---
-const exportHeightSnrBtn = window.document.getElementById("export-height-snr-btn");
-check("SNR vs. ROI Height Export button exists", !!exportHeightSnrBtn);
-
-downloadImageCalls.length = 0;
-lastBlobText = null;
-exportHeightSnrBtn.dispatchEvent(new window.Event("click"));
-
-check(
-  "Exporting downloads exactly 1 Plotly PNG of the height-snr-chart",
-  downloadImageCalls.length === 1 && downloadImageCalls[0].divId === "height-snr-chart",
-  downloadImageCalls
-);
-check("Exporting produced a text file", lastBlobText !== null);
-const heightSnrCsvLines = (lastBlobText || "").trim().split("\n");
-check(
-  "Export metadata header includes the derived CurrentEffectiveHeight_px line (not a raw params field)",
-  heightSnrCsvLines.some((l) => /^#\s+CurrentEffectiveHeight_px: \d+$/.test(l)),
-  heightSnrCsvLines.filter((l) => l.includes("CurrentEffectiveHeight"))
-);
-check(
-  "Export metadata header also includes the standard params dump (e.g. sensorWidth, photons)",
-  heightSnrCsvLines.some((l) => l.startsWith("#   sensorWidth:")) && heightSnrCsvLines.some((l) => l.startsWith("#   photons:")),
-  heightSnrCsvLines.slice(0, 8)
-);
-const heightSnrCsvHeaderRow = heightSnrCsvLines.find((l) => l.startsWith("Height_px,"));
-check(
-  "Export CSV has a 2-column header row: Height_px, SNR",
-  heightSnrCsvHeaderRow === "Height_px,SNR",
-  heightSnrCsvHeaderRow
-);
-const heightSnrCsvDataRows = heightSnrCsvLines.slice(heightSnrCsvLines.indexOf(heightSnrCsvHeaderRow) + 1);
-check(
-  "Export CSV has one row per height, matching the current chart's x-axis (1 to sensor height)",
-  heightSnrCsvDataRows.length === parseFloat(sensorHeightInput.value),
-  { rows: heightSnrCsvDataRows.length, expected: parseFloat(sensorHeightInput.value) }
-);
-const firstHeightSnrRow = heightSnrCsvDataRows[0].split(",").map(Number);
-check(
-  "First data row starts at Height=1, matching the chart's x-axis lower bound",
-  firstHeightSnrRow[0] === 1,
-  firstHeightSnrRow
-);
-
-// --- ROI box only paints while Spectroscopy is the active mode ---
-const roiCanvasCallCountInSpectroscopy = rowIndicatorCalls.filter((c) => c.fn === "fillRect").length;
-modeTabImaging.dispatchEvent(new window.Event("click"));
-// Force a fresh canvas repaint (a parameter change, same as elsewhere in
-// this file) while sitting on Imaging, and confirm no new ROI fillRect calls
-// were added - it's a Spectroscopy-only overlay on the shared canvas.
-photonsSlider.value = "500";
-photonsSlider.dispatchEvent(new window.Event("input"));
-check(
-  "No ROI box paint happens while Imaging is the active mode, despite a live redraw",
-  rowIndicatorCalls.filter((c) => c.fn === "fillRect").length === roiCanvasCallCountInSpectroscopy,
-  rowIndicatorCalls.filter((c) => c.fn === "fillRect").length
-);
-modeTabSpectroscopy.dispatchEvent(new window.Event("click"));
-check(
-  "Switching back into Spectroscopy repaints the ROI box",
-  rowIndicatorCalls.filter((c) => c.fn === "fillRect").length > roiCanvasCallCountInSpectroscopy
-);
-
-// Image Simulator is the SAME #panel-1 shown in Imaging mode, borrowed into
-// #spectro-slot-image - not a separate copy, not a placeholder.
-check(
-  "Image Simulator panel (panel-1) was borrowed into the Spectroscopy slot",
-  cameraSimPanelEl.parentElement === spectroSlotImageEl
-);
-check(
-  "panel-1 keeps its own title and Info button/canvas exactly as in Imaging mode (nothing rebuilt)",
-  cameraSimPanelEl.querySelector("h2").textContent === "Camera Simulator"
-  && !!cameraSimPanelEl.querySelector("#sensor-canvas")
-  && !!cameraSimPanelEl.querySelector("#panel-1-info-btn")
-);
-check(
-  "style.css pins the borrowed panel-1 to the second grid column/row, since its slot is a display:contents landing spot",
-  /#mode-spectroscopy #panel-1\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1/.test(styleCssText)
-);
-check(
-  "No panel-1/sensor-canvas duplication - exactly one of each in the whole document",
-  window.document.querySelectorAll("#panel-1").length === 1 && window.document.querySelectorAll("#sensor-canvas").length === 1
-);
-
-// Calculated Spectrum and Region of Interest panels still have their own
-// header (title + Info icon button). Calculated Spectrum now has real
-// content; Region of Interest is still the placeholder.
-const spectroscopyPanelInfo = [
-  { panelId: "panel-spectrum", btnId: "panel-spectrum-info-btn", overlayId: "panel-spectrum-info-overlay", closeBtnId: "panel-spectrum-info-close-btn", hasRealContent: true },
-  { panelId: "panel-spectro-roi", btnId: "panel-spectro-roi-info-btn", overlayId: "panel-spectro-roi-info-overlay", closeBtnId: "panel-spectro-roi-info-close-btn", hasRealContent: true },
-];
-for (const { panelId, btnId, overlayId, closeBtnId, hasRealContent } of spectroscopyPanelInfo) {
-  const btn = window.document.getElementById(btnId);
-  const overlay = window.document.getElementById(overlayId);
-  const closeBtn = window.document.getElementById(closeBtnId);
-  const header = window.document.querySelector(`#${panelId} .panel-header`);
-
-  check(`${panelId}: has a header with a title (h2) and an Info icon button`, !!header && !!header.querySelector("h2") && !!btn);
-  check(`${panelId}: Info icon button sits on the right side of the header`, !!header && header.lastElementChild.contains(btn));
-  check(`${panelId}: Info overlay exists and starts hidden`, !!overlay && overlay.hidden === true);
-
-  btn.dispatchEvent(new window.Event("click"));
-  check(`${panelId}: clicking the Info icon opens its overlay`, overlay.hidden === false);
-  const infoContentText = window.document.getElementById(`${panelId}-info-modal-content`).textContent;
-  if (hasRealContent) {
-    check(
-      `${panelId}: overlay no longer shows the 'Info coming soon' placeholder`,
-      !infoContentText.includes("Info coming soon")
-    );
-  } else {
-    check(
-      `${panelId}: overlay shows placeholder text (content to be filled in later)`,
-      infoContentText.includes("Info coming soon")
-    );
-  }
-  closeBtn.dispatchEvent(new window.Event("click"));
-  check(`${panelId}: Info overlay closes via its close button`, overlay.hidden === true);
-}
-
-// --- Calculated Spectrum Info overlay: real content specifics ---
-const panelSpectrumInfoContent = window.document.getElementById("panel-spectrum-info-modal-content");
-check(
-  "Calculated Spectrum Info overlay describes the Full Sensor Vertical Bin vs. Custom ROI binning behavior",
-  !!panelSpectrumInfoContent && /Full Sensor Vertical Bin/.test(panelSpectrumInfoContent.textContent)
-  && /Custom ROI/.test(panelSpectrumInfoContent.textContent)
-);
-check(
-  "Calculated Spectrum Info overlay explains Horizontal Binning's effect on point count and SNR",
-  !!panelSpectrumInfoContent && /Horizontal Binning/.test(panelSpectrumInfoContent.textContent)
-  && /SNR/.test(panelSpectrumInfoContent.textContent)
-);
-check(
-  "Calculated Spectrum Info overlay explains the Pixel/Wavelength toggle and the dispersion model",
-  !!panelSpectrumInfoContent && /Pixel/.test(panelSpectrumInfoContent.textContent)
-  && /Wavelength/.test(panelSpectrumInfoContent.textContent)
-  && /Czerny-Turner/.test(panelSpectrumInfoContent.textContent)
-);
-check(
-  "Calculated Spectrum Info overlay mentions the invalid-geometry fallback to Pixel",
-  !!panelSpectrumInfoContent && /falls back to the Pixel axis/.test(panelSpectrumInfoContent.textContent)
-);
-
-// --- Spectroscopy Controls (ROI/Binning panel) Info overlay: three sections ---
-const panelSpectroRoiInfoContent = window.document.getElementById("panel-spectro-roi-info-modal-content");
-check(
-  "Spectroscopy Controls Info overlay has three bolded section titles, one per section",
-  !!panelSpectroRoiInfoContent
-  && Array.from(panelSpectroRoiInfoContent.querySelectorAll("p > strong:first-child")).map((s) => s.textContent)
-    .join("|") === "ROI & Binning|Dispersion Model|SNR vs. ROI Height"
-);
-check(
-  "Spectroscopy Controls Info overlay's ROI & Binning section covers Full Sensor Vertical Bin, Custom ROI, and Horizontal Binning",
-  !!panelSpectroRoiInfoContent && /Full Sensor Vertical Bin/.test(panelSpectroRoiInfoContent.textContent)
-  && /Custom ROI/.test(panelSpectroRoiInfoContent.textContent)
-  && /Horizontal Binning/.test(panelSpectroRoiInfoContent.textContent)
-);
-check(
-  "Spectroscopy Controls Info overlay's Dispersion Model section mentions the Czerny-Turner model and pixel-to-wavelength mapping",
-  !!panelSpectroRoiInfoContent && /Czerny-Turner/.test(panelSpectroRoiInfoContent.textContent)
-  && /wavelength axis/.test(panelSpectroRoiInfoContent.textContent)
-);
-check(
-  "Spectroscopy Controls Info overlay's SNR vs. ROI Height section notes ROI height is linked to the sensor height",
-  !!panelSpectroRoiInfoContent && /linked to the image sensor height/.test(panelSpectroRoiInfoContent.textContent)
-);
-
-check(
-  "Imaging mode no longer contains panel-1 while Spectroscopy has borrowed it (but still has panel-4/panel-comparison, untouched)",
-  !modeViewImaging.contains(cameraSimPanelEl) && !!modeViewImaging.querySelector("#panel-4") && !!modeViewImaging.querySelector("#panel-comparison")
-);
 
 // --- SNR Only mode: real panel-4/panel-5/panel-comparison get borrowed ---
 modeTabSnr.dispatchEvent(new window.Event("click"));
-check("Clicking SNR Only activates its mode-view and deactivates Spectroscopy's", modeViewSnr.classList.contains("is-active") && !modeViewSpectroscopy.classList.contains("is-active"));
-check("SNR Only tab becomes aria-selected, Spectroscopy's no longer is", modeTabSnr.getAttribute("aria-selected") === "true" && modeTabSpectroscopy.getAttribute("aria-selected") === "false");
-check(
-  "Leaving Spectroscopy for SNR Only handed panel-1 back to its Imaging home (not left stranded in the Spectroscopy slot)",
-  cameraSimPanelEl.parentElement === window.document.querySelector(".center-column") && spectroSlotImageEl.children.length === 0
-);
+check("Clicking SNR Only activates its mode-view and deactivates Imaging's", modeViewSnr.classList.contains("is-active") && !modeViewImaging.classList.contains("is-active"));
+check("SNR Only tab becomes aria-selected, Imaging's no longer is", modeTabSnr.getAttribute("aria-selected") === "true" && modeTabImaging.getAttribute("aria-selected") === "false");
 
 const snrSlotChartEl = window.document.getElementById("snr-slot-chart");
 const snrSlotComparisonEl = window.document.getElementById("snr-slot-comparison");
@@ -2712,10 +1594,6 @@ check(
 check(
   "The Comparison panel is back inside the center column after the round-trip",
   window.document.querySelector(".center-column #panel-comparison") === window.document.getElementById("panel-comparison")
-);
-check(
-  "panel-1 is still the first child of the center column, in its original position, after the full Spectroscopy/SNR Only round-trip",
-  window.document.querySelector(".center-column").firstElementChild === cameraSimPanelEl
 );
 check(
   "SNR Only's slots are empty again after giving their borrowed panels back",

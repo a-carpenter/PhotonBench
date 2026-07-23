@@ -43,24 +43,6 @@ function poissonRandom(lambda) {
   return Math.max(0, Math.round(lambda + Math.sqrt(lambda) * z));
 }
 
-// EM Gain (CCD-only electron-multiplying gain register): the physically
-// correct noise model, per spec. Deliberately NOT the old approach (an
-// "effective QE" substitution computed in main.js, which incorrectly
-// inflated the SIGNAL too and let shot noise scale right along with it).
-// The actual model, applied wherever `emGainEnabled` is true on a params
-// object passed into this file:
-//   - Signal (photons x QE) is completely UNCHANGED - EM Gain never touches
-//     the numerator of the SNR calculation.
-//   - Shot noise and dark current noise both pick up the gain register's
-//     "excess noise factor" F (F^2 = 2, fixed - not user-adjustable):
-//     noise_shot = sqrt(F^2 x signal), noise_dark = sqrt(F^2 x darkMean).
-//   - Read noise is divided by EM Gain outright (no cap/floor), since it's
-//     added after the gain register and so becomes comparatively negligible
-//     the harder the register multiplies: noise_read = readNoise / emGain.
-// EM_GAIN_EXCESS_NOISE_FACTOR_SQUARED is intentionally a local, non-exported
-// constant - there is no control anywhere in the UI to change it.
-const EM_GAIN_EXCESS_NOISE_FACTOR_SQUARED = 2;
-
 // Sub-pixel supersampling grid used only for native pixels straddling the
 // illumination disc's edge (see makeCircularIllumination below): a 4x4 grid
 // of sample points per edge pixel is enough to anti-alias the boundary
@@ -154,39 +136,22 @@ function makeCircularIllumination(rows, cols, nPhotons, radius, centerRow, cente
  * notebook exactly (same order of operations, same clipping behavior).
  *
  * @param {Float64Array} photonMap  incident photons per pixel
- * @param {object} params  as usual, plus optional `emGainEnabled`/`emGain`
- *   (see the EM Gain block above this function)
  * @returns {{adu: Float32Array, signalElectrons: Float32Array}}
  */
 function simulateSensor(photonMap, params) {
-  const { exposureTime, qe, darkCurrent, readNoise, offset, fullWell, gain, bitDepth, emGainEnabled, emGain } = params;
+  const { exposureTime, qe, darkCurrent, readNoise, offset, fullWell, gain, bitDepth } = params;
   const n = photonMap.length;
   const adu = new Float32Array(n);
   const signalElectrons = new Float32Array(n);
   const darkMean = darkCurrent * exposureTime;
   const maxAdu = Math.pow(2, bitDepth) - 1;
-  const emActive = !!emGainEnabled;
-  const f2 = emActive ? EM_GAIN_EXCESS_NOISE_FACTOR_SQUARED : 1;
-  const effectiveReadNoise = emActive ? readNoise / emGain : readNoise;
 
   for (let i = 0; i < n; i++) {
-    const meanPe = photonMap[i] * qe;
-    const pe = poissonRandom(meanPe);
+    const pe = poissonRandom(photonMap[i] * qe);
     const de = poissonRandom(darkMean);
-    // EM Gain excess noise: the Poisson draws above already contribute
-    // variance (meanPe + darkMean), same as the no-gain case. On top of
-    // that, add a zero-mean Gaussian perturbation sized so the TOTAL
-    // variance of the combined pre-register charge reaches
-    // F^2 x (meanPe + darkMean) - the extra variance the gain register's
-    // stochastic multiplication introduces. This keeps the signal's MEAN
-    // (and Poisson's natural low-light graininess) untouched while matching
-    // analyticNoise()'s noise budget exactly.
-    const excess = emActive
-      ? gaussianRandom(0, Math.sqrt((f2 - 1) * (meanPe + darkMean)))
-      : 0;
-    const rn = gaussianRandom(0, effectiveReadNoise);
+    const rn = gaussianRandom(0, readNoise);
 
-    let se = pe + de + excess + rn + offset;
+    let se = pe + de + rn + offset;
     se = Math.min(Math.max(se, 0), fullWell);
 
     let a = se / gain;
@@ -228,25 +193,19 @@ function simulateSensor(photonMap, params) {
  * @param {Float64Array} photonMap  incident photons per NATIVE pixel, length rows*cols
  * @param {number} rows  native sensor rows
  * @param {number} cols  native sensor columns
- * @param {object} params  as simulateSensor(), plus `registerWellDepth` (only used by "charge" mode when binning).
- *   `emGainEnabled`/`emGain` (see the EM Gain block above simulateSensor())
- *   only ever apply to the "charge" branch, since EM Gain is CCD-only and
- *   CCDs always use "charge" mode.
+ * @param {object} params  as simulateSensor(), plus `registerWellDepth` (only used by "charge" mode when binning)
  * @param {number} binHorizontal  native columns combined per output pixel
  * @param {number} binVertical  native rows combined per output pixel
  * @param {"charge"|"digital"} binningMode
  * @returns {{adu: Float32Array, signalElectrons: Float32Array, binnedRows: number, binnedCols: number}}
  */
 function simulateBinnedFrame(photonMap, rows, cols, params, binHorizontal, binVertical, binningMode) {
-  const { exposureTime, qe, darkCurrent, readNoise, offset, fullWell, registerWellDepth, gain, bitDepth, emGainEnabled, emGain } = params;
+  const { exposureTime, qe, darkCurrent, readNoise, offset, fullWell, registerWellDepth, gain, bitDepth } = params;
   const darkMean = darkCurrent * exposureTime;
   const maxAdu = Math.pow(2, bitDepth) - 1;
   const binnedRows = Math.floor(rows / binVertical);
   const binnedCols = Math.floor(cols / binHorizontal);
   const n = binHorizontal * binVertical;
-  const emActive = !!emGainEnabled;
-  const f2 = emActive ? EM_GAIN_EXCESS_NOISE_FACTOR_SQUARED : 1;
-  const effectiveReadNoise = emActive ? readNoise / emGain : readNoise;
 
   const adu = new Float32Array(binnedRows * binnedCols);
   const signalElectrons = new Float32Array(binnedRows * binnedCols);
@@ -257,30 +216,17 @@ function simulateBinnedFrame(photonMap, rows, cols, params, binHorizontal, binVe
 
       if (binningMode === "charge") {
         let combinedPE = 0;
-        let combinedMeanPE = 0;
         let combinedDE = 0;
         for (let dy = 0; dy < binVertical; dy++) {
           const rowOffset = (by * binVertical + dy) * cols;
           for (let dx = 0; dx < binHorizontal; dx++) {
             const nativeIdx = rowOffset + (bx * binHorizontal + dx);
-            const meanPe = photonMap[nativeIdx] * qe;
-            combinedMeanPE += meanPe;
-            combinedPE += poissonRandom(meanPe);
+            combinedPE += poissonRandom(photonMap[nativeIdx] * qe);
             combinedDE += poissonRandom(darkMean);
           }
         }
-        // Same EM Gain excess-noise treatment as simulateSensor() above,
-        // just applied once to the WHOLE bin's combined pre-register charge
-        // (n native pixels' signal + dark, summed) rather than per native
-        // pixel - matching the physical picture of on-chip charge binning,
-        // where the combined charge passes through the shared gain register
-        // as a single unit. combinedMeanPE + n*darkMean is the bin's total
-        // pre-register mean; F^2 x that mean is the target total variance.
-        const excess = emActive
-          ? gaussianRandom(0, Math.sqrt((f2 - 1) * (combinedMeanPE + n * darkMean)))
-          : 0;
-        const rn = gaussianRandom(0, effectiveReadNoise); // one read-noise draw for the whole bin
-        let se = combinedPE + combinedDE + excess + rn + offset;
+        const rn = gaussianRandom(0, readNoise); // one read-noise draw for the whole bin
+        let se = combinedPE + combinedDE + rn + offset;
         const wellCeiling = n > 1 ? registerWellDepth : fullWell;
         se = Math.min(Math.max(se, 0), wellCeiling);
 
@@ -326,14 +272,10 @@ function simulateBinnedFrame(photonMap, rows, cols, params, binHorizontal, binVe
  * discontinuity/peak-then-decline in the SNR curve right at saturation).
  *
  * @param {number[]|Float64Array} nPhotonsArray
- * @param {object} params  as usual, plus optional `emGainEnabled`/`emGain`
- *   (see the EM Gain block above simulateSensor()). signal_e is NEVER
- *   affected by EM Gain - only noise_shot/noise_dark (both x F^2) and
- *   noise_read (divided by emGain) are.
  * @returns {{signal_e: Float64Array, noise_shot: Float64Array, noise_dark: Float64Array, noise_read: Float64Array, noise_total: Float64Array}}
  */
 function analyticNoise(nPhotonsArray, params) {
-  const { exposureTime, qe, darkCurrent, readNoise, fullWell, emGainEnabled, emGain } = params;
+  const { exposureTime, qe, darkCurrent, readNoise, fullWell } = params;
   const n = nPhotonsArray.length;
 
   const signal_e = new Float64Array(n);
@@ -342,23 +284,19 @@ function analyticNoise(nPhotonsArray, params) {
   const noise_read = new Float64Array(n);
   const noise_total = new Float64Array(n);
 
-  const emActive = !!emGainEnabled;
-  const f2 = emActive ? EM_GAIN_EXCESS_NOISE_FACTOR_SQUARED : 1;
-  const effectiveReadNoise = emActive ? readNoise / emGain : readNoise;
-
   const darkMean = darkCurrent * exposureTime;
-  const darkNoise = Math.sqrt(f2 * darkMean);
+  const darkNoise = Math.sqrt(darkMean);
 
   for (let i = 0; i < n; i++) {
     const sUnclipped = nPhotonsArray[i] * qe;
     const s = Math.min(sUnclipped, fullWell);
-    const shot = Math.sqrt(f2 * s);
+    const shot = Math.sqrt(s);
 
     signal_e[i] = s;
     noise_shot[i] = shot;
     noise_dark[i] = darkNoise;
-    noise_read[i] = effectiveReadNoise;
-    noise_total[i] = Math.sqrt(shot * shot + darkNoise * darkNoise + effectiveReadNoise * effectiveReadNoise);
+    noise_read[i] = readNoise;
+    noise_total[i] = Math.sqrt(shot * shot + darkNoise * darkNoise + readNoise * readNoise);
   }
 
   return { signal_e, noise_shot, noise_dark, noise_read, noise_total };

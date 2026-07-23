@@ -52,45 +52,6 @@ html, body {
   color: #6b7280;
 }
 
-/* Right side of the header: the mode tabs (Imaging/Spectroscopy/SNR Only)
-   sit immediately to the left of the Info button, both grouped together so
-   the title stays pinned far left and this cluster stays pinned far
-   right. */
-.app-header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.mode-tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.mode-tab {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 5px 12px;
-  border: 1px solid #3a4150;
-  border-radius: 0;
-  background: transparent;
-  color: #aeb4bf;
-  cursor: pointer;
-}
-
-.mode-tab:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-}
-
-.mode-tab.is-active {
-  background: #185fa5;
-  border-color: #185fa5;
-  color: #ffffff;
-}
-
 /* Header Info button: blends into the dark titlebar instead of standing out
    as a solid button - background/border removed (overriding .btn's own),
    icon dimmed to a muted grey-blue so it stays legible on #232833 without
@@ -155,133 +116,21 @@ html, body {
   background: #e4e6ea;
 }
 
-/* --- Overall layout ---
-   Left: Box 6 (parameters), fixed width, identical across every mode and
-         never rebuilt or moved when the mode tabs are switched.
-   Right of that: .mode-area, filling the remaining width. Only one
-         .mode-view inside it is ever visible (.is-active) at a time - each
-         mode defines its own internal grid via its own #mode-<name>.is-active
-         rule below, so Imaging/Spectroscopy/SNR Only can each use whatever
-         column/row split makes sense for that mode's panels. */
+/* --- Overall three-column layout ---
+   Left: Box 6 (parameters), scrolls independently if it doesn't all fit.
+   Middle: Box 1 (sensor sim) + info text filling the remaining space below it.
+   Right: Boxes 2-5, stacked and independently scrollable so none of them
+          have to shrink to fit on screen at once. */
 
 .app-grid {
   flex: 1 1 auto;
   width: 100vw;
   padding: 14px;
-  display: flex;
-  gap: 14px;
-  min-height: 0;
-}
-
-.mode-area {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-}
-
-.mode-view {
-  display: none;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  gap: 14px;
-}
-
-.mode-view.is-active {
   display: grid;
-}
-
-/* Imaging: unchanged from before the mode tabs existed - Box 1 + Comparison
-   stacked in a wider left column, Boxes 2-5 stacked in a narrower right
-   column. */
-#mode-imaging.is-active {
-  grid-template-columns: 1.5fr 1fr;
-}
-
-/* Spectroscopy: Calculated Spectrum and Image Simulator as two equal-size
-   panels side by side in the top row (tops aligned with Box 6's top, since
-   .mode-area sits at the same flex row as .params-column, and the grid row
-   itself starts at the top of the mode-view). The Region of Interest &
-   Spectroscopy Controls panel spans both columns in a second, shorter row
-   below, reserved for later. This only needs the two top panels to be equal
-   size (same row, equal 1fr columns) - not literally square - so it's the
-   same reliable pattern as SNR Only's rows below, no special sizing tricks
-   required. */
-#mode-spectroscopy.is-active {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 2fr 1fr;
-}
-
-/* Explicit placement (rather than relying on DOM-order auto-placement) for
-   the same reason SNR Only's panels are placed explicitly below: #panel-1 is
-   moved in and out of #spectro-slot-image (a display:contents slot - see
-   .mode-slot) by main.js, so its grid position needs to be pinned to its own
-   id, not the now-transparent slot's. */
-#panel-spectrum {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-#mode-spectroscopy #panel-1 {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-#panel-spectro-roi {
-  grid-column: 1 / -1;
-  grid-row: 2;
-}
-
-/* SNR Only: SNR curve (top left) and Noise Contributions (top right) at the
-   same height and the same widths as before (1.5fr/1fr columns), with the
-   Comparison panel spanning both columns' full width in a row below. */
-#mode-snr.is-active {
-  grid-template-columns: 1.5fr 1fr;
-  grid-template-rows: 1fr 1fr;
-}
-
-/* The slot itself shouldn't add an extra box in the layout - main.js
-   appends the real panel-4/panel-5/panel-comparison elements straight into
-   these, and display:contents makes the slot disappear from the box model
-   so the panel becomes a direct grid item of #mode-snr itself, exactly as
-   if it had been written there in markup. Since the slot's own box is gone,
-   grid placement has to target the panel's own id instead of the slot's. */
-.mode-slot {
-  display: contents;
-}
-
-#mode-snr #panel-4 {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-#mode-snr #panel-5 {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-#mode-snr #panel-comparison {
-  grid-column: 1 / -1;
-  grid-row: 2;
-}
-
-/* Placeholder text centered in a panel body - used by the Spectroscopy
-   panels until their real content is built. */
-.panel-body-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  text-align: center;
-}
-
-.placeholder-text {
-  color: #6b7280;
-  font-size: 13px;
-  line-height: 1.5;
-  max-width: 32em;
-  margin: 0;
+  gap: 14px;
+  grid-template-columns: 300px 1.5fr 1fr;
+  grid-template-rows: 1fr;
+  min-height: 0;
 }
 
 .panel {
@@ -442,7 +291,6 @@ html, body {
 /* --- Left column: Box 6, parameter controls --- */
 
 .params-column {
-  flex: 0 0 300px;
   min-height: 0;
 }
 
@@ -556,116 +404,6 @@ html, body {
    ticked or not. */
 .binning-select-row[hidden] {
   display: none;
-}
-
-/* Spectroscopy's Horizontal-only mirrored Binning control (see
-   createBinningControls()'s `includeVertical: false` in main.js) - a single
-   select shouldn't sit in a 2-column grid with an empty second cell. */
-.binning-select-row.binning-select-row-single {
-  grid-template-columns: 1fr;
-}
-
-/* panel-spectro-roi's panel-body: three columns (left: Binning + ROI,
-   middle: Dispersion Model, right: reserved/empty), separated by thin
-   vertical rules. Overrides .panel-body's own padding (each column manages
-   its own instead) - .panel-body's `display: flex` with no explicit
-   direction already lays these out in a row, which is exactly what's
-   wanted here. */
-.panel-body-spectro-controls {
-  padding: 0;
-  flex-direction: row;
-  align-items: stretch;
-}
-
-.spectro-col {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 0;
-  padding: 12px 16px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.spectro-col + .spectro-col {
-  border-left: 1px solid #d8dce3;
-}
-
-.spectro-col-dispersion {
-  overflow: hidden;
-}
-
-/* SNR vs. ROI Height plot: a smaller box than the column, anchored to the
-   top-left rather than filling/centering - its own Plotly title ("SNR vs.
-   ROI Height") already labels it, so no extra HTML heading is needed above
-   it (unlike the Dispersion Model column, whose plain control list has no
-   built-in title of its own). flex-start (not the default stretch) keeps
-   the chart from re-stretching to the column's full width. */
-.spectro-col-snr-height {
-  padding: 8px 10px 12px;
-  align-items: flex-start;
-}
-
-/* Fixed pixel height rather than a percentage - percentage heights inside a
-   flex column can resolve ambiguously (this is what actually went wrong
-   last time: the box didn't visibly shrink and Plotly's own rendering came
-   out stretched/oversized instead). Width as a percentage of the column is
-   fine since the column's width is unambiguous. */
-.height-snr-chart {
-  flex: 0 0 auto;
-  width: 42%; /* ~60% of the previous 70% */
-  height: 220px;
-  min-height: 0;
-  min-width: 0;
-}
-
-/* Full Sensor Vertical Bin: reuses .binning-checkbox-label's checkbox+text
-   look (defined further down) - sits directly above the "Custom ROI"
-   sub-header and the ROI Top/Bottom/Height inputs it locks/unlocks. */
-#full-vbin-label {
-  margin-bottom: 10px;
-}
-
-/* "Custom ROI" sub-header, between Full Sensor Vertical Bin and the ROI
-   inputs it gates - one visual step down from the column's own "ROI &
-   Binning" h3 (smaller, lighter weight, muted color) so the hierarchy reads
-   section > sub-section rather than two headings competing at the same
-   level. */
-.subsection-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: #6b7280;
-  margin: 0 0 8px;
-}
-
-/* Spectroscopy ROI Top/Bottom/Height: three across in one row (rather than
-   Height getting its own row below) - keeps the left column compact enough
-   that the mirrored Horizontal Binning control below it stays in view
-   without scrolling. */
-.roi-controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.roi-controls .dim-input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Dispersion Model group heading, inside panel-spectro-roi - same small
-   uppercase treatment as .panel-header h2, so it reads as a section label
-   rather than a full heading competing with the panel's own title. */
-#panel-spectro-roi h3 {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #3a4150;
-  margin: 4px 0 10px;
 }
 
 .reset-wrapper {
@@ -927,46 +665,6 @@ html, body {
   margin-bottom: 0;
 }
 
-/* Section headers within a longer info overlay (e.g. the Parameters panel's
-   "Camera Type"/"Experimental Parameters"/"Camera Parameters" breakdown) -
-   matches the small-caps look already used for .controls-group h3 in the
-   Parameters panel itself, so the overlay's structure echoes the panel
-   it's explaining. */
-.info-subhead {
-  margin: 18px 0 8px 0;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #3a4150;
-}
-
-.info-subhead:first-child {
-  margin-top: 0;
-}
-
-/* A run of parameter name/definition pairs - dt (name) bolded like a label,
-   dd (definition) as regular indent-free body text directly below it.
-   Denser than one <p> per parameter, which matters here since a single
-   overlay can list a dozen-plus parameters at once. */
-.info-param-list {
-  margin: 0 0 12px 0;
-}
-
-.info-param-list dt {
-  font-weight: 700;
-  color: #1f2430;
-  margin: 10px 0 2px 0;
-}
-
-.info-param-list dt:first-child {
-  margin-top: 0;
-}
-
-.info-param-list dd {
-  margin: 0;
-}
-
 /* --- Right column: Boxes 2-5, stacked and scrollable --- */
 
 .plots-column {
@@ -1052,129 +750,4 @@ html, body {
 
 .icon-info {
   display: block;
-}
-
-/* Calculated Spectrum's Pixel/Wavelength x-axis toggle - same two-button,
-   is-active-highlighted pattern as .sensor-type-btn, just scoped to its own
-   class so it doesn't inherit that pattern's flex-1/equal-width sizing
-   (this one sits inline in a panel header, not stretched across a row). */
-.spectrum-xaxis-tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.spectrum-xaxis-btn.is-active {
-  background: #185fa5;
-  border-color: #185fa5;
-  color: #fff;
-}
-
-.spectrum-xaxis-btn.is-active:hover {
-  background: #12467c;
-}
-
-/* ---------------------------------------------------------------------------
-   Splash / landing screen: full-viewport overlay shown on every page load,
-   on top of the app underneath. One continuous black background (no split
-   panel) - the graphic occupies the left 60% (centered both axes via
-   flexbox, not SVG viewBox scaling, which proved unreliable across aspect
-   ratios), and the three mode buttons sit in the remaining right portion.
-   Hidden via the [hidden] attribute once a mode button is clicked - see
-   initSplashScreen() in main.js.
---------------------------------------------------------------------------- */
-
-.splash-screen {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  background: #070a12;
-  display: flex;
-  align-items: stretch;
-}
-
-.splash-screen[hidden] {
-  display: none;
-}
-
-.splash-graphic {
-  flex: 0 0 60%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-}
-
-.splash-svg {
-  width: 80%;
-  max-width: 560px;
-}
-
-.splash-buttons {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 18px;
-  padding: 0 8%;
-  box-sizing: border-box;
-}
-
-.splash-mode-btn {
-  box-sizing: border-box;
-  padding: 22px 20px;
-  border-radius: 10px;
-  background: #161c2c;
-  border: 1px solid #2a3348;
-  color: #e8ecf5;
-  font: inherit;
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-align: center;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.splash-mode-btn:hover {
-  background: #1d2438;
-  border-color: #4fd6ff;
-}
-
-.splash-mode-btn:focus-visible {
-  outline: 2px solid #4fd6ff;
-  outline-offset: 2px;
-}
-
-/* Wavelength Range readout, sitting above the Dispersion Model controls
-   (see updateWavelengthRangeDisplay() in main.js). A quieter, boxed
-   companion to .subsection-label - a computed value rather than a section
-   title, so it gets a light background instead of just uppercase text. */
-.wavelength-range-display {
-  font-size: 12px;
-  font-weight: 600;
-  color: #3a4150;
-  background: #f3f5f8;
-  border: 1px solid #e2e6ec;
-  border-radius: 6px;
-  padding: 6px 10px;
-  margin: 0 0 8px;
-}
-
-.dispersion-results-group .controls-group-header {
-  margin-bottom: 0;
-}
-
-.dispersion-results {
-  margin-top: 10px;
-}
-
-.dispersion-results-group.is-collapsed .dispersion-results {
-  display: none;
-}
-
-.height-snr-header {
-  display: flex;
-  justify-content: flex-end;
-  align-self: stretch; /* .spectro-col-snr-height uses align-items: flex-start, so this row needs its own stretch to actually span the column width and push the button right */
-  margin-bottom: 6px;
 }

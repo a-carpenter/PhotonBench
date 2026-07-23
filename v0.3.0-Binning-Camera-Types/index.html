@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhotonBench - A Camera Simulation Tool</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-titlebar">
+    <div class="app-title-group">
+      <h1>PhotonBench</h1>
+      <span class="app-subtitle">A Camera Simulation Tool</span>
+      <span class="app-version" title="Pre-release - see CHANGELOG.md for version history">v0.3.0</span>
+    </div>
+    <button id="info-btn" type="button" class="btn btn-sm icon-btn" aria-label="Info" title="Info">
+      <svg class="icon-info" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.4" r="1.1" fill="currentColor"/><rect x="9.05" y="9.2" width="1.9" height="6" rx="0.6" fill="currentColor"/></svg>
+    </button>
+  </header>
+
+  <div id="info-overlay" class="info-overlay" hidden>
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="info-modal-content">
+      <button id="info-close-btn" class="info-close" aria-label="Close">&times;</button>
+      <div id="info-modal-content" class="info-text"></div>
+    </div>
+  </div>
+
+  <div id="comparison-info-overlay" class="info-overlay" hidden>
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="comparison-info-modal-content">
+      <button id="comparison-info-close-btn" class="info-close" aria-label="Close">&times;</button>
+      <div id="comparison-info-modal-content" class="info-text">
+        <p>SNR is an important quantity that allows for a compact comparison of a camera's hypothetical performance under different illumination conditions. Here SNR is plotted as a function of incident photons and as a function of 13 µm pixels (Normalized SNR). Pixel size is important here as, generally, larger pixels will be more sensitive due to the larger surface area. Thus, the Normalized SNR plot is created by scaling the SNR by the ratio of the pixel surface area to a reference 13 µm pixel. The latter plot provides a more accurate comparison of two cameras with different pixel sizes under the same illumination conditions.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-1-info-overlay" class="info-overlay" hidden>
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="panel-1-info-modal-content">
+      <button id="panel-1-info-close-btn" class="info-close" aria-label="Close">&times;</button>
+      <div id="panel-1-info-modal-content" class="info-text">
+        <p><em>Info coming soon.</em></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-2-info-overlay" class="info-overlay" hidden>
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="panel-2-info-modal-content">
+      <button id="panel-2-info-close-btn" class="info-close" aria-label="Close">&times;</button>
+      <div id="panel-2-info-modal-content" class="info-text">
+        <p><em>Info coming soon.</em></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-3-info-overlay" class="info-overlay" hidden>
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="panel-3-info-modal-content">
+      <button id="panel-3-info-close-btn" class="info-close" aria-label="Close">&times;</button>
+      <div id="panel-3-info-modal-content" class="info-text">
+        <p><em>Info coming soon.</em></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-4-info-overlay" class="info-overlay" hidden>
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="panel-4-info-modal-content">
+      <button id="panel-4-info-close-btn" class="info-close" aria-label="Close">&times;</button>
+      <div id="panel-4-info-modal-content" class="info-text">
+        <p><em>Info coming soon.</em></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-5-info-overlay" class="info-overlay" hidden>
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="panel-5-info-modal-content">
+      <button id="panel-5-info-close-btn" class="info-close" aria-label="Close">&times;</button>
+      <div id="panel-5-info-modal-content" class="info-text">
+        <p><em>Info coming soon.</em></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-6-info-overlay" class="info-overlay" hidden>
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="panel-6-info-modal-content">
+      <button id="panel-6-info-close-btn" class="info-close" aria-label="Close">&times;</button>
+      <div id="panel-6-info-modal-content" class="info-text">
+        <p><em>Info coming soon.</em></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-grid">
+
+    <!-- Left column: Box 6, parameters. Scrolls independently if it doesn't
+         all fit vertically. -->
+    <section class="panel params-column" id="panel-6">
+      <div class="panel-header">
+        <h2>Parameters</h2>
+        <div class="panel-controls">
+          <button id="panel-6-info-btn" type="button" class="btn btn-sm icon-btn" aria-label="About this panel" title="About this panel">
+            <svg class="icon-info" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.4" r="1.1" fill="currentColor"/><rect x="9.05" y="9.2" width="1.9" height="6" rx="0.6" fill="currentColor"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="panel-body panel-body-controls">
+        <div class="controls-group sensor-type-wrapper">
+          <h3>Camera Type</h3>
+          <div class="sensor-type-tabs">
+            <button type="button" class="btn sensor-type-btn is-active" id="sensor-type-ccd-btn">CCD</button>
+            <button type="button" class="btn sensor-type-btn" id="sensor-type-scmos-btn">sCMOS</button>
+            <button type="button" class="btn sensor-type-btn" id="sensor-type-ingaas-btn">InGaAs</button>
+          </div>
+          <div class="reset-divider"></div>
+        </div>
+        <div class="params-scroll-area">
+          <div class="controls-group collapsible-group" id="experimental-group">
+            <button type="button" class="controls-group-header" id="experimental-group-toggle" aria-expanded="true" aria-controls="experimental-controls">
+              <h3>Experimental Parameters</h3>
+              <svg class="icon-chevron" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" focusable="false"><path d="M2.5 4.2 L6 7.8 L9.5 4.2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div id="experimental-controls" class="controls-list"></div>
+          </div>
+          <div class="controls-group collapsible-group" id="camera-group">
+            <button type="button" class="controls-group-header" id="camera-group-toggle" aria-expanded="true" aria-controls="camera-controls">
+              <h3>Camera Parameters</h3>
+              <svg class="icon-chevron" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" focusable="false"><path d="M2.5 4.2 L6 7.8 L9.5 4.2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div id="camera-controls" class="controls-list"></div>
+          </div>
+        </div>
+        <div class="reset-wrapper">
+          <div class="reset-divider"></div>
+          <button id="reset-defaults-btn" class="btn btn-reset">Reset to Default</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Middle column: Box 1 (sensor sim) on top, Camera Sensitivity
+         Comparison panel filling the remaining space below it (the old
+         info-text space, repurposed - the info text itself now lives in
+         the Info overlay triggered from the header). Neither part scrolls
+         on its own yet; the comparison panel is empty until the comparison
+         feature is built. -->
+    <div class="center-column">
+      <section class="panel" id="panel-1">
+        <div class="panel-header">
+          <h2>Camera Simulator</h2>
+          <div class="panel-controls">
+            <div class="sensor-dims">
+              <label for="sensor-width-input">W</label>
+              <input type="number" id="sensor-width-input" class="dim-input" min="1024" max="5000" step="1" value="1024" />
+              <span class="dims-x">&times;</span>
+              <label for="sensor-height-input">H</label>
+              <input type="number" id="sensor-height-input" class="dim-input" min="1" max="5000" step="1" value="1024" />
+            </div>
+            <button id="export-btn" class="btn">Export All</button>
+            <button id="play-pause-btn" class="btn btn-primary">Play</button>
+            <button id="panel-1-info-btn" type="button" class="btn btn-sm icon-btn" aria-label="About this panel" title="About this panel">
+              <svg class="icon-info" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.4" r="1.1" fill="currentColor"/><rect x="9.05" y="9.2" width="1.9" height="6" rx="0.6" fill="currentColor"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel-body panel-body-canvas">
+          <canvas id="sensor-canvas"></canvas>
+        </div>
+      </section>
+
+      <section class="panel comparison-panel" id="panel-comparison">
+        <div class="panel-header">
+          <h2>Camera Sensitivity Comparison</h2>
+          <div class="panel-controls">
+            <button id="export-comparison-btn" type="button" class="btn btn-sm">Export</button>
+            <button id="comparison-info-btn" type="button" class="btn btn-sm icon-btn" aria-label="About the Normalized SNR plot" title="About the Normalized SNR plot">
+              <svg class="icon-info" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.4" r="1.1" fill="currentColor"/><rect x="9.05" y="9.2" width="1.9" height="6" rx="0.6" fill="currentColor"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel-body comparison-body">
+          <div id="comparison-plot-1" class="comparison-plot chart"></div>
+          <div id="comparison-plot-2" class="comparison-plot chart"></div>
+          <div id="comparison-legend-wrap" class="comparison-legend-wrap">
+            <button id="comparison-legend-toggle" type="button" class="comparison-legend-toggle" aria-label="Hide trace legend" title="Hide trace legend">&raquo;</button>
+            <div id="comparison-legend" class="comparison-legend"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Right column: Boxes 2-5, stacked and independently scrollable so
+         none of them need to shrink to fit. -->
+    <div class="plots-column">
+      <section class="panel" id="panel-2">
+        <div class="panel-header panel-header-split">
+          <div class="panel-controls">
+            <button id="histogram-scale-toggle-btn" type="button" class="btn btn-sm">Change to Log</button>
+          </div>
+          <div class="panel-controls">
+            <button id="export-histogram-btn" class="btn btn-sm">Export</button>
+            <button id="panel-2-info-btn" type="button" class="btn btn-sm icon-btn" aria-label="About this panel" title="About this panel">
+              <svg class="icon-info" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.4" r="1.1" fill="currentColor"/><rect x="9.05" y="9.2" width="1.9" height="6" rx="0.6" fill="currentColor"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="histogram-chart" class="chart"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-3">
+        <div class="panel-header panel-header-plot">
+          <div class="panel-controls">
+            <button id="export-line-btn" class="btn btn-sm">Export</button>
+            <button id="panel-3-info-btn" type="button" class="btn btn-sm icon-btn" aria-label="About this panel" title="About this panel">
+              <svg class="icon-info" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.4" r="1.1" fill="currentColor"/><rect x="9.05" y="9.2" width="1.9" height="6" rx="0.6" fill="currentColor"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="line-profile-chart" class="chart"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-4">
+        <div class="panel-header panel-header-split">
+          <div class="panel-controls">
+            <button id="compare-btn" type="button" class="btn btn-sm">Compare</button>
+          </div>
+          <div class="panel-controls">
+            <button id="export-snr-btn" class="btn btn-sm">Export</button>
+            <button id="panel-4-info-btn" type="button" class="btn btn-sm icon-btn" aria-label="About this panel" title="About this panel">
+              <svg class="icon-info" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.4" r="1.1" fill="currentColor"/><rect x="9.05" y="9.2" width="1.9" height="6" rx="0.6" fill="currentColor"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="snr-chart" class="chart"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-5">
+        <div class="panel-header panel-header-plot">
+          <div class="panel-controls">
+            <button id="export-noise-btn" class="btn btn-sm">Export</button>
+            <button id="panel-5-info-btn" type="button" class="btn btn-sm icon-btn" aria-label="About this panel" title="About this panel">
+              <svg class="icon-info" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.4" r="1.1" fill="currentColor"/><rect x="9.05" y="9.2" width="1.9" height="6" rx="0.6" fill="currentColor"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="noise-chart" class="chart"></div>
+        </div>
+      </section>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="src/physics.js"></script>
+  <script src="src/colormap.js"></script>
+  <script src="src/canvas.js"></script>
+  <script src="src/charts.js"></script>
+  <script src="src/controls.js"></script>
+  <script src="src/info.js"></script>
+  <script src="src/exporters.js"></script>
+  <script src="src/main.js"></script>
+</body>
+</html>

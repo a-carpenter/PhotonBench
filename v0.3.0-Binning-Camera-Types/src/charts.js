@@ -172,11 +172,9 @@ function updateLineProfileChart(divId, { rowData, vmin, vmax, colStart, colEnd, 
 // ---------------------------------------------------------------------------
 // Panel 4: static SNR curve (log-log), with a red marker at the current
 // operating point and a shaded +/-1 SNR band. When EM Gain and/or Binning
-// are active, a second "Modified SNR" trace shows the actual current-settings
-// curve (labeled generically since either modifier, or both together, can be
-// what's driving it - not just Binning), and the baseline "Single Pixel SNR"
-// curve is dashed so the two read as reference vs. modified rather than
-// looking like two equally-valid curves.
+// are active, a second "Binned SNR" trace shows the actual current-settings
+// curve, and the baseline "Single Pixel SNR" curve is dashed so the two read
+// as reference vs. active rather than looking like two equally-valid curves.
 // ---------------------------------------------------------------------------
 
 const SNR_BASELINE_COLOR = "#185FA5";
@@ -227,7 +225,7 @@ function updateSNRChart(divId, { photonRange, baselineSnr, activeSnr, modifierAc
     traces.push({
       x: photonRange, y: activeSnr, type: "scatter", mode: "lines",
       line: { color: SNR_ACTIVE_COLOR, width: 2 },
-      hovertemplate: "%{x:.1f}, %{y:.1f}<br>Modified SNR<extra></extra>",
+      hovertemplate: "%{x:.1f}, %{y:.1f}<br>Binned SNR<extra></extra>",
     });
   }
 
@@ -250,94 +248,6 @@ function updateSNRChart(divId, { photonRange, baselineSnr, activeSnr, modifierAc
 }
 
 // ---------------------------------------------------------------------------
-// Spectroscopy: SNR vs. ROI Height - static (non-Monte-Carlo, analytic) curve
-// showing how SNR trends as the vertically-binned height (ROI Height, or the
-// full sensor height when Full Sensor Vertical Bin is checked) grows, at the
-// CURRENT single-pixel photon level, Horizontal Bin factor, and camera-type
-// binning rules (charge vs digital - see combineForBinning() in main.js).
-// X-axis is linear pixels (not log, unlike the Incident-Photons SNR chart
-// above) since it's meant to map directly onto the user's own sensor height.
-//
-// Sized in FIXED PIXELS via layout.width/height, with config.responsive set
-// to false - deliberately not left to autosize off the container's CSS box
-// the way every other chart in this app does. Plotly's responsive autosizing
-// measures (and then internally caches) the container's size at render time;
-// once that's happened, shrinking the container via CSS alone doesn't
-// reliably force Plotly to re-measure and redraw smaller, which is why
-// changing the surrounding div's width in style.css had no visible effect.
-// Explicit pixel dimensions sidestep that entirely.
-// ---------------------------------------------------------------------------
-
-const HEIGHT_SNR_CHART_WIDTH = 350;
-const HEIGHT_SNR_CHART_HEIGHT = 190;
-const PLOTLY_CONFIG_FIXED_SIZE = { displayModeBar: false, responsive: false };
-
-function initHeightSNRChart(divId) {
-  Plotly.newPlot(
-    divId,
-    [{ x: [], y: [], type: "scatter", mode: "lines", line: { color: "#185FA5", width: 2 } }],
-    mergeLayout({
-      width: HEIGHT_SNR_CHART_WIDTH,
-      height: HEIGHT_SNR_CHART_HEIGHT,
-      // Slightly taller bottom margin than the shared default (45px) so the
-      // x-axis title has room to clear the axis tick labels now that the
-      // chart's overall height has been reduced.
-      margin: { l: 55, r: 20, t: 30, b: 55 },
-      title: { text: "SNR vs. ROI Height", font: { size: 13 } },
-      xaxis: boxedAxis({ title: "ROI Height (px)" }),
-      // tickmode: "auto" + nticks caps how many gridlines Plotly draws on
-      // the log axis (it otherwise puts one at every decade, which crowds a
-      // short chart when the sensor/ROI height is small).
-      yaxis: boxedAxis({ title: "Signal-to-Noise", type: "log", tickmode: "auto", nticks: 4 }),
-    }),
-    PLOTLY_CONFIG_FIXED_SIZE
-  );
-}
-
-function updateHeightSNRChart(divId, { heights, snr, currentHeight, maxHeight }) {
-  // X-axis pinned to [1, sensor height] regardless of the current ROI/Full
-  // Sensor Vertical Bin state, per the "keep it meaningful to the user's
-  // sensor" requirement - so the axis doesn't rescale every time the ROI
-  // Height or Full Sensor Vertical Bin changes.
-  const xRange = [1, Math.max(maxHeight, 1)];
-
-  const shapes = [
-    {
-      type: "line",
-      xref: "x",
-      yref: "paper",
-      x0: currentHeight,
-      x1: currentHeight,
-      y0: 0,
-      y1: 1,
-      // Same red/dash treatment as the Noise Contributions chart's
-      // current-photons line, for a consistent "this is where you are right
-      // now" visual language across the app.
-      line: { color: "#e63946", width: 1.5, dash: "dash" },
-    },
-  ];
-
-  Plotly.react(
-    divId,
-    [{
-      x: heights, y: snr, type: "scatter", mode: "lines",
-      line: { color: "#185FA5", width: 2 },
-      hovertemplate: "%{x} px, %{y:.1f}<extra></extra>",
-    }],
-    mergeLayout({
-      width: HEIGHT_SNR_CHART_WIDTH,
-      height: HEIGHT_SNR_CHART_HEIGHT,
-      margin: { l: 55, r: 20, t: 30, b: 55 },
-      title: { text: "SNR vs. ROI Height", font: { size: 13 } },
-      xaxis: boxedAxis({ title: "ROI Height (px)", range: xRange }),
-      yaxis: boxedAxis({ title: "Signal-to-Noise", type: "log", tickmode: "auto", nticks: 4 }),
-      shapes,
-    }),
-    PLOTLY_CONFIG_FIXED_SIZE
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Panel 5: static noise-contributions curve (log-log): shot/dark/read/total.
 // ---------------------------------------------------------------------------
 
@@ -352,7 +262,7 @@ function initNoiseChart(divId) {
   );
 }
 
-function updateNoiseChart(divId, { photonRange, noiseShot, noiseDark, noiseRead, noiseTotal, currentPhotons, showLegend = true }) {
+function updateNoiseChart(divId, { photonRange, noiseShot, noiseDark, noiseRead, noiseTotal, currentPhotons }) {
   // Same fix as the SNR chart: pin the x-axis to the photon sweep's own
   // span so the current-photons reference line (below) can't drag the axis
   // around as the Photons slider moves.
@@ -399,13 +309,8 @@ function updateNoiseChart(divId, { photonRange, noiseShot, noiseDark, noiseRead,
       yaxis: boxedAxis({ title: "Noise (e- RMS)", type: "log" }),
       shapes,
       annotations,
-      showlegend: showLegend,
-      // Legend hidden (SNR Only mode, where the noise chart sits right next
-      // to the SNR chart at the same height and the legend's reserved strip
-      // made the two plot areas visibly mismatched): reclaim the bottom
-      // margin the legend was using, since there's nothing left to draw
-      // down there.
-      margin: showLegend ? { l: 55, r: 20, t: 36, b: 95 } : { l: 55, r: 20, t: 36, b: 40 },
+      showlegend: true,
+      margin: { l: 55, r: 20, t: 36, b: 95 },
       legend: {
         orientation: "h",
         x: 0.5,
@@ -465,49 +370,6 @@ function updateComparisonChart(divId, { title, xAxisTitle, traces }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Spectroscopy: Calculated Spectrum. X-axis is either raw Pixel (column)
-// position or, once the Dispersion Model is filled in, calculated
-// Wavelength (nm) - toggled in main.js, which passes the axis title through
-// here (see the Pixel/Wavelength buttons on the panel header). Y-axis is
-// intensity (ADU), the result of Full Vertical Bin/ROI binning - summing a
-// range of rows into one, so there's exactly one value per column.
-// ---------------------------------------------------------------------------
-
-function initSpectrumChart(divId) {
-  Plotly.newPlot(
-    divId,
-    [{ x: [], y: [], type: "scatter", mode: "lines", line: { color: "#185FA5", width: 1.5 } }],
-    // No plot title here - the panel's own header ("Calculated Spectrum")
-    // already says it, so a Plotly title would just repeat it.
-    mergeLayout({
-      xaxis: boxedAxis({ title: "Pixel" }),
-      yaxis: boxedAxis({ title: "Intensity" }),
-    }),
-    PLOTLY_CONFIG
-  );
-}
-
-function updateSpectrumChart(divId, { x, y, xAxisTitle = "Pixel" }) {
-  // The Pixel axis is always a contiguous 0..n-1 index, so a fixed range
-  // keeps the plot from "wobbling" as bin count changes. Wavelength values
-  // aren't evenly spaced integers, so that range would be meaningless there
-  // - Plotly auto-scales it instead.
-  const xaxisOpts = xAxisTitle === "Pixel"
-    ? { title: xAxisTitle, range: [0, Math.max(x.length - 1, 0)] }
-    : { title: xAxisTitle };
-  Plotly.react(
-    divId,
-    [{ x, y, type: "scatter", mode: "lines", line: { color: "#185FA5", width: 1.5 } }],
-    // No plot title here either - see initSpectrumChart() above.
-    mergeLayout({
-      xaxis: boxedAxis(xaxisOpts),
-      yaxis: boxedAxis({ title: "Intensity" }),
-    }),
-    PLOTLY_CONFIG
-  );
-}
-
 window.CameraCharts = {
   initHistogramChart,
   updateHistogramChart,
@@ -520,8 +382,4 @@ window.CameraCharts = {
   updateNoiseChart,
   initComparisonChart,
   updateComparisonChart,
-  initSpectrumChart,
-  updateSpectrumChart,
-  initHeightSNRChart,
-  updateHeightSNRChart,
 };

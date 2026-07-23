@@ -42,20 +42,10 @@ function downloadPlotlyPNG(divId, filename) {
   });
 }
 
-/**
- * @param {object} params current parameter values
- * @param {string[]} [extraLines] additional "#   Key: value"-style lines
- *   appended after the params dump, for derived values that aren't a raw
- *   params field but are still useful context (e.g. exportHeightSNR's
- *   CurrentEffectiveHeight).
- */
-function buildMetadataHeader(params, extraLines = []) {
+function buildMetadataHeader(params) {
   const lines = ["# PhotonBench export", "# Parameters:"];
   for (const [key, value] of Object.entries(params)) {
     lines.push(`#   ${key}: ${value}`);
-  }
-  for (const line of extraLines) {
-    lines.push(line);
   }
   lines.push("");
   return lines.join("\n");
@@ -151,31 +141,6 @@ function exportNoise({ params, staticData, stamp = timestamp() }) {
 }
 
 /**
- * Spectroscopy's SNR vs. ROI Height chart: PNG + CSV of vertical bin height
- * vs. SNR, at the current photon level, camera type, and Horizontal Bin
- * factor. The metadata header gets one extra line beyond the usual params
- * dump - CurrentEffectiveHeight_px, the height the chart's red dashed line
- * currently marks - since that's a derived value (from fullVerticalBin/
- * roiTop/roiBottom), not a raw params field, and is the key "where are you
- * on this curve" fact for anyone reading the exported file later.
- * @param {object} args
- * @param {object} args.params  current parameter values (for metadata)
- * @param {object} args.staticData  { heights, snr, currentHeight }
- * @param {string} [args.stamp] shared timestamp, if called as part of a future exportAll
- */
-function exportHeightSNR({ params, staticData, stamp = timestamp() }) {
-  const header = buildMetadataHeader(params, [
-    `#   CurrentEffectiveHeight_px: ${staticData.currentHeight}`,
-  ]);
-  downloadPlotlyPNG("height-snr-chart", `snr-vs-roi-height_${stamp}.png`);
-  const csv = header + arraysToCSV(
-    ["Height_px", "SNR"],
-    [staticData.heights, staticData.snr]
-  );
-  downloadTextFile(`snr-vs-roi-height_${stamp}.txt`, csv);
-}
-
-/**
  * Camera Sensitivity Comparison panel: PNGs of both plots, plus one CSV
  * covering every saved trace on both (long format - one row per trace per
  * photon-range point - since different traces can have been saved under
@@ -236,7 +201,6 @@ window.CameraExporters = {
   exportLineProfile,
   exportSNR,
   exportNoise,
-  exportHeightSNR,
   exportComparison,
   downloadTextFile,
   downloadCanvasPNG,

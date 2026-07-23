@@ -49,10 +49,6 @@ function computeDisplayRange(dataArray, maxValue) {
  *
  * With binHorizontal = binVertical = 1, this reduces to one LUT lookup per
  * native pixel, identical to the original unbinned behavior.
- *
- * Returns the ImageData it painted, so callers can cache it and cheaply
- * repaint the same frame (e.g. while dragging an overlay like the ROI box)
- * without re-running the simulation.
  */
 function renderSensorFrame(canvas, aduArray, binnedRows, binnedCols, binHorizontal, binVertical, nativeRows, nativeCols, lut, vmin, vmax) {
   if (canvas.width !== nativeCols) canvas.width = nativeCols;
@@ -97,7 +93,6 @@ function renderSensorFrame(canvas, aduArray, binnedRows, binnedCols, binHorizont
   }
 
   ctx.putImageData(imageData, 0, 0);
-  return imageData;
 }
 
 /**
@@ -125,46 +120,4 @@ function drawRowIndicatorLine(canvas, row, color) {
   ctx.restore();
 }
 
-/**
- * Draw the Spectroscopy Region of Interest box on top of whatever
- * renderSensorFrame() just painted: a full-width band from `topRow` to
- * `bottomRow` (NATIVE pixel coordinates, inclusive), with a translucent fill
- * so the illuminated frame stays visible underneath, a solid border all the
- * way around, and thicker "handle" strokes right on the top/bottom edges
- * themselves - those thicker lines are exactly where a mouse/pointer drag
- * will grab the box (see the pointer handlers in main.js), so the extra
- * weight there is a visual affordance, not just decoration.
- *
- * Always spans the full canvas width - the ROI only ever narrows the
- * sensor's vertical extent, per the "Full Vertical Bin" spectrum design
- * (see main.js), so there is no horizontal bound to draw.
- */
-function drawROIBox(canvas, topRow, bottomRow, color) {
-  const ctx = canvas.getContext("2d");
-  const top = Math.min(topRow, bottomRow);
-  const bottom = Math.max(topRow, bottomRow);
-  const height = Math.max(bottom - top, 0);
-
-  ctx.save();
-  ctx.fillStyle = color + "26"; // ~15% alpha translucent fill (hex alpha suffix)
-  ctx.fillRect(0, top, canvas.width, height);
-
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([]);
-  ctx.strokeRect(0.75, top + 0.75, canvas.width - 1.5, height - 1.5);
-
-  // Thicker grab-handle strokes right on the top/bottom edges.
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(0, top + 2);
-  ctx.lineTo(canvas.width, top + 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(0, bottom - 2);
-  ctx.lineTo(canvas.width, bottom - 2);
-  ctx.stroke();
-  ctx.restore();
-}
-
-window.CameraCanvas = { computeDisplayRange, renderSensorFrame, drawRowIndicatorLine, drawROIBox };
+window.CameraCanvas = { computeDisplayRange, renderSensorFrame, drawRowIndicatorLine };
